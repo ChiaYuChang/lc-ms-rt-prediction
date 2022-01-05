@@ -238,7 +238,6 @@ class ParallelMolReader():
         self._mol_reader = None
 
     def __call__(self, mol_reader: MolReader, pool) -> MolReader:
-        # pool = ProcessingPool(nodes=self.n_jobs)
         mol_record = pool.map(
             lambda x: mol_reader[x[0]:x[1]],
             self.batch_index(range(len(mol_reader)), n=self.n_jobs)

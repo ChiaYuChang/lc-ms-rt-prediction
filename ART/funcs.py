@@ -1,15 +1,16 @@
 import json
+import os
 import pandas as pd
 import pickle
 import numpy as np
-import zlib
 import torch
+import zlib
 
 from .ParSet import LinearLayerPars
-
 from copy import deepcopy
 from datetime import datetime
 from hashlib import sha256
+from numpy.lib.arraysetops import isin
 from random import choices
 from string import ascii_letters, digits
 from torch_geometric.data.data import Data
@@ -225,3 +226,90 @@ def calc_tilde_A(
         return torch.linalg.multi_dot([D, A, D]).to_sparse()
     else:
         return torch.linalg.multi_dot([D, A, D])
+
+
+def np_one_hot(x: np.ndarray, num_classes:int = -1):
+    if num_classes < 0:
+        num_classes = np.max(x)
+    
+    if len(x.shape) == 0:
+        y = np.zeros((num_classes), dtype=np.float32)
+        y[int(x-1)] = 1.0
+        return y
+    elif len(x.shape) == 1:
+        y = np.zeros((x.shape[0], num_classes), dtype=np.float32)
+        for i in range(len(x)):
+            print(f"({i}, {x[i]-1})")
+            y[i, int(x[i]-1)] = 1.0
+        return y
+    else:
+        print(f"The one_hot function only works for scalar and 1D array but x is a {len(x.shape)}D array.")
+        raise ValueError
+
+def array_to_tensor(data: Data, in_place: bool = False):
+    if not(in_place):
+        data = deepcopy(data)    
+    
+    for key in data.keys:
+        if isinstance(data[key], np.ndarray):
+            data[key] = torch.from_numpy(data[key])
+    return data
+
+
+def check_has_processed(
+        root: str, raw_file_names: Union[List[str], str],
+        processed_file_names: Union[List[str], str] = [
+            "pre_filter.pt",  "pre_transform.pt",  "test.pt",  "train.pt",  "valid.pt"]
+    ):
+    print("1. Checking root ...")
+    if os.path.isdir(root):
+        print("    - root directory ................ found")
+    else:
+        raise IOError
+
+    print("2. Checking raw files ...")
+    if os.path.isdir(root + "/raw"):
+        print("    - raw file directory ............ found")
+        if isinstance(raw_file_names, str):
+            n_char = len(raw_file_names)
+            if not(os.path.isfile(root + "/raw/" + raw_file_names)):
+                print(f"    - {raw_file_names} " + "." * (30-n_char)+ " not found")
+                raise IOError
+            else:
+                print(f"    - {raw_file_names} " + "." * (30-n_char)+ " found")
+        else:
+            for raw_file_name in raw_file_names:
+                n_char = len(raw_file_name)
+                if not(os.path.isfile(root + "/raw/" + raw_file_name)):
+                    print(f"    - {raw_file_name} " + "." * (30-n_char)+ " not found")
+                    raise IOError
+                else:
+                    print(f"    - {raw_file_name} " + "." * (30-n_char)+ " found")
+    else:
+        print("    - raw file directory .......... not found")
+        raise IOError
+
+    print("3. Checking processed files ...")
+    flag = True
+    if os.path.isdir(root + "/processed"):
+        print("    - processed file directory ...... found")
+        if isinstance(processed_file_names, str):
+            n_char = len(processed_file_names)
+            if not(os.path.isfile(root + "/processed/" + processed_file_names)):
+                print(f"    - {processed_file_names} " + "." * (30-n_char)+ " not found")
+                flag = False
+            else:
+                print(f"    - {processed_file_names} " + "." * (30-n_char)+ " found")
+        else:
+            for processed_file_name in processed_file_names:
+                n_char = len(processed_file_name)
+                if not(os.path.isfile(root + "/processed/" + processed_file_name)):
+                    print(f"    - {processed_file_name} " + "." * (30-n_char)+ " not found")
+                    flag = False
+                else:
+                   print(f"    - {processed_file_name} " + "." * (30-n_char)+ " found")
+    else:
+        print("    - processed file directory ...... not found")
+        flag = False
+    
+    return flag

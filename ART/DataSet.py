@@ -2,25 +2,28 @@ import torch
 
 from torch_geometric.data import Data, InMemoryDataset
 from tqdm.std import tqdm
-from typing import Callable, List
+from typing import Callable, List, Union, Optional
 from ART.DataSplitter import RandomSplitter, DataSplitter
 
 
 class SMRT(InMemoryDataset):
     def __init__(
             self, root: str,
-            data_list: List[Data],
+            data_list: Union[List[Data], None] = None,
             split: str = "train",
-            transform: Callable[[Data], Data] = None,
-            pre_transform: Callable[[Data], Data] = None,
-            pre_filter: Callable[[Data], bool] = None,
-            splitter: DataSplitter = RandomSplitter,
+            transform: Optional[Callable[[Data], Data]] = None,
+            pre_transform: Optional[Callable[[Data], Data]] = None,
+            pre_filter: Optional[Callable[[Data], bool]] = None,
+            splitter: Optional[DataSplitter] = None
             ) -> None:
         """
         splitter: A DataSplitter object that use to split data
                   into different sets
         """
-        self._splitter = splitter
+        if splitter is None:
+            self._splitter = RandomSplitter()
+        else:
+            self._splitter = splitter
         self._data_list = data_list
 
         super().__init__(root, transform, pre_transform, pre_filter)
@@ -50,16 +53,16 @@ class SMRT(InMemoryDataset):
 
     def process(self) -> None:
         data_list = self._data_list
-
+        
         if self.pre_filter is not None:
             print(" > Filtering data")
             data_list = [data for data in\
                 tqdm(iterable=data_list, desc="Filtering data")\
                 if self.pre_filter(data)]
 
-        if self.transform is not None:
+        if self.pre_transform is not None:
             print(" > Transforming data")
-            data_list = [self.transform(data) for data in\
+            data_list = [self.pre_transform(data) for data in\
                 tqdm(iterable=data_list, desc="Transforming data")]
 
         # split data into three set
@@ -86,18 +89,21 @@ class SMRT(InMemoryDataset):
 class PredRet(InMemoryDataset):
     def __init__(
             self, root: str,
-            data_list: List[Data],
+            data_list: Union[List[Data], None] = None,
             split: str = "train",
-            transform: Callable[[Data], Data] = None,
-            pre_transform: Callable[[Data], Data] = None,
-            pre_filter: Callable[[Data], bool] = None,
-            splitter: DataSplitter = RandomSplitter,
+            transform: Optional[Callable[[Data], Data]] = None,
+            pre_transform: Optional[Callable[[Data], Data]] = None,
+            pre_filter: Optional[Callable[[Data], bool]] = None,
+            splitter: Optional[DataSplitter] = None
             ) -> None:
         """
         splitter: A DataSplitter object that use to split data
                   into different sets
         """
-        self._splitter = splitter
+        if splitter is None:
+            self._splitter = RandomSplitter()
+        else:
+            self._splitter = splitter
         self._data_list = data_list
 
         super().__init__(root, transform, pre_transform, pre_filter)
@@ -135,9 +141,9 @@ class PredRet(InMemoryDataset):
                 tqdm(iterable=data_list, desc="Filtering data")\
                 if self.pre_filter(data)]
 
-        if self.transform is not None:
+        if self.pre_transform is not None:
             print(" > Transforming data")
-            data_list = [self.transform(data) for data in\
+            data_list = [self.pre_transform(data) for data in\
                 tqdm(iterable=data_list, desc="Transforming data")]
 
         # split data into three set
