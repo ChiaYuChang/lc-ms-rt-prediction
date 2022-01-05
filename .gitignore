@@ -1,0 +1,8 @@
+/Profile/
+/Data/**/*.json
+/Data/**/*.sdf
+/Data/**/*.pt
+/Data/**/*.csv
+
+/ART/**/__pycache__
+/ART/**/.vscode
