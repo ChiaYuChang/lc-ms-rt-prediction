@@ -10,11 +10,14 @@ class DataTransformer():
 
     def __init__(
             self, transform_list: Union[List[Transform], Transform],
-            inplace: bool = False) -> None:
+            inplace: bool = False, rm_sup_info: bool = False, sup_info_key: str= "sup"
+            ) -> None:
         if isinstance(transform_list, Transform):
             transform_list = [transform_list]
         self.transform_list = transform_list
         self.inplace = inplace
+        self.sup_info_key = sup_info_key
+        self.rm_sup_info = rm_sup_info
     
     def __call__(self, data: Union[List[Data], Data, InMemoryDataset]) -> Union[List[Data], Data]:
         if isinstance(data, Data):
@@ -36,6 +39,10 @@ class DataTransformer():
                     new_value=t.func(data, **t.args))
             else:
                 data[t.name] = t.func(data, **t.args)
+        
+        if self.rm_sup_info:
+            if self.sup_info_key in data.keys:
+                data[self.sup_info_key] = None
         return data
     
     def merge(self, existed_value, new_value):

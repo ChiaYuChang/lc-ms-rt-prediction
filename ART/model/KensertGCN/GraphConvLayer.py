@@ -1,10 +1,10 @@
 import torch
-from torch import nn
+import torch.nn as nn
+
 from torch.nn.init import xavier_normal_ as glorot_
 from typing import Tuple
 
 class GraphConvLayer(nn.Module):
-
     def __init__(
             self,
             in_channels: int = 128,
@@ -17,9 +17,14 @@ class GraphConvLayer(nn.Module):
 
         self.dropout = nn.Dropout(p=dropout[0], inplace=dropout[1])
 
-        self.W_0 = torch.empty((in_channels, out_channels), dtype=torch.float32)
-        self.W_1 = torch.empty((in_channels, out_channels), dtype=torch.float32)
-
+        self.W_0 = nn.parameter.Parameter(
+            torch.empty((in_channels, out_channels), dtype=torch.float32)
+        )
+        self.W_1 = nn.parameter.Parameter(
+            torch.empty((in_channels, out_channels), dtype=torch.float32)
+        )
+        # self.activation = nn.ReLU()
+        # self.batch_norm = nn.BatchNorm1d(num_features=out_channels)
         if relu:
             self.activation = nn.ReLU()
         else:
@@ -31,7 +36,7 @@ class GraphConvLayer(nn.Module):
             self.batch_norm = lambda x: x
 
 
-        self.supports_masking = True
+        # self.supports_masking = True
 
     # def compute_mask(self, inputs, mask=None):
     #     if mask is None:
@@ -46,7 +51,8 @@ class GraphConvLayer(nn.Module):
         # \tilde{A} = D^{-1/2}AD^{-1/2}
         A = tilde_A
         H0 = node_attr
-        H1 = torch.matmul(H0, self.W_0) + torch.linalg.multi_dot([A, H0, self.W_1])
+
+        H1 = torch.add(torch.matmul(H0, self.W_0), torch.linalg.multi_dot([A, H0, self.W_1]))
         H1 = self.batch_norm(H1)
         H1 = self.activation(H1)
         H1 = self.dropout(H1)

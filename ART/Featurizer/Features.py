@@ -193,8 +193,8 @@ mol_num_aliphatic_ring = Feature(
     )
 )
 
-mol_wt = Feature(
-    name="wt",
+mol_mw = Feature(
+    name="mw",
     func=lambda x: rdMolDescriptors.CalcExactMolWt(x),
     type="continuous",
     mapping=None

@@ -53,7 +53,7 @@ class DefaultFeatureSet(FeatureSet):
             Features.mol_num_ring,
             Features.mol_num_aliphatic_ring,
             Features.mol_num_aromatic_ring,
-            Features.mol_wt,
+            Features.mol_mw,
             Features.mol_volume
         ]
 

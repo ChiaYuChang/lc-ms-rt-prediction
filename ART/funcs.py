@@ -6,14 +6,14 @@ import numpy as np
 import torch
 import zlib
 
-from .ParSet import LinearLayerPars
 from copy import deepcopy
 from datetime import datetime
 from hashlib import sha256
 from numpy.lib.arraysetops import isin
 from random import choices
 from string import ascii_letters, digits
-from torch_geometric.data.data import Data
+# from torch_geometric.data.data import Data
+from ART.Data import GraphData as Data
 from torch_geometric.nn import radius_graph, knn_graph
 from torch_geometric.utils import to_dense_adj
 from typing import Union, List, Dict, OrderedDict
@@ -24,42 +24,6 @@ def iqr(x: Union[pd.Series, np.array]):
         x = pd.Series(x)
     """Vectorized interquartile range (IQR)"""
     return x.quantile(.75) - x.quantile(.25)
-
-
-def predictor_par_transform(
-        in_features: int = 64,
-        hidden_features: Union[List[int], None] = None,
-        out_features: int = 1,
-        dropout: Union[List[float], float] = 0.1,
-        relu: Union[List[bool], bool] = False,
-        batch_norm: Union[List[bool], bool] = False
-        ) -> OrderedDict:
-
-    in_features = [in_features] + hidden_features
-    out_features = hidden_features + [out_features]
-    n_layer = len(in_features)
-
-    # cast dropout, relu, and batch_norm
-    if isinstance(dropout, float):
-        dropout = [dropout] * n_layer
-        dropout[-1] = -1
-    if isinstance(relu, bool):
-        relu = [relu] * n_layer
-        relu[-1] = False
-    if isinstance(batch_norm, bool):
-        batch_norm = [batch_norm] * n_layer
-        batch_norm[-1] = False
-
-    prdctr_lyr_pars = OrderedDict()
-    for i in range(n_layer):
-        prdctr_lyr_pars[i] = LinearLayerPars(
-            in_features=in_features[i],
-            out_features=out_features[i],
-            dropout=(dropout[i], True),
-            relu=relu[i],
-            batch_norm=batch_norm[i]
-        )
-    return prdctr_lyr_pars
 
 
 def json_snapshot_to_doc(
@@ -107,6 +71,32 @@ def doc_to_json_snapshot(doc: dict) -> dict:
     return json.loads(binary_snapshot.decode())
 
 
+def array_to_tensor(data: Data, zero_thr: float = 0.5, inplace: bool = False) -> Data:
+    if not(inplace):
+        data = deepcopy(data)    
+    
+    for key in data.keys:
+        if isinstance(data[key], np.ndarray):
+            tnsr = torch.from_numpy(data[key])
+            if torch.sum(tnsr == 0) / tnsr.numel() > zero_thr:
+                tnsr = tnsr.to_sparse()
+            data[key] = tnsr
+    return data
+
+
+def tensor_to_array(data: Data, inplace: bool = False) -> Data:
+    if not(inplace):
+        data = deepcopy(data)    
+    
+    for key in data.keys:
+        if isinstance(data[key], torch.Tensor):
+            if data[key].is_sparse:
+                data[key] = data[key].to_dense().numpy()
+            else:
+                data[key] = data[key].numpy()
+    return data
+
+
 def split_list(x: List, n: int, return_idxs: bool = False):
     x_len = len(x)
     chunk_size = x_len//n
@@ -130,14 +120,12 @@ def data_to_doc(
         sup_data_key: str = "sup",
         add_sup_field: Dict = {}
         ) -> dict:
-
+    data = tensor_to_array(data=data, inplace=False)
     data_body = Data()
-    
     data_sup = {}
     for k in data.keys:
         if k == sup_data_key:
-            data_sup = add_sup_field | data[k]
-            data_sup["rt"] = float(data.y)
+            data_sup = {**add_sup_field, **data[k]}
         else:
             data_body[k] = data[k]
 
@@ -160,7 +148,9 @@ def data_to_doc(
     return doc
 
 
-def doc_to_data(doc: Dict, w_sup_field: bool = False, suppress_error: bool = False) -> Data:
+def doc_to_data(
+        doc: Dict, w_sup_field: bool = False, 
+        suppress_error: bool = False, **kwarg) -> Data:
     binary_data = doc["binary_data"]
     if doc["compress"][0]:
         if doc["compress"][1] == "zlib":
@@ -181,7 +171,7 @@ def doc_to_data(doc: Dict, w_sup_field: bool = False, suppress_error: bool = Fal
             if k not in exclude_set:
                 sup_field[k] = doc[k]
         data[doc["sup_data_key"]] = sup_field
-    return data
+    return array_to_tensor(data = data, inplace=True, **kwarg)
 
 
 def gen_random_str(n):
@@ -214,7 +204,9 @@ def calc_knn_graph(data: Data, k: int) -> torch.Tensor:
 
 def calc_tilde_A(
         data, self_loop: bool= True,
-        which: str = "edge_index", to_sparse: bool = True
+        which: str = "edge_index",
+        to_sparse: bool = True,
+        to_coo: bool = True
         ) -> torch.Tensor:
     A = torch.squeeze(to_dense_adj(data[which])).float()
     if self_loop:
@@ -222,10 +214,17 @@ def calc_tilde_A(
         A = (A > 0).float()
     D = torch.diag(torch.sqrt(1/torch.sum(A, 1, dtype=torch.float)))
     
+    tilda_A = torch.linalg.multi_dot([D, A, D])
     if to_sparse:
-        return torch.linalg.multi_dot([D, A, D]).to_sparse()
+        if to_coo:
+            tilda_A = tilda_A.to_sparse()
+            return {"index": tilda_A.indices(), "value": tilda_A.values()}
+        else:
+            return tilda_A.to_sparse()
     else:
-        return torch.linalg.multi_dot([D, A, D])
+        if to_coo:
+            print("to_coo only works when to_sparse is true")
+        return tilda_A
 
 
 def np_one_hot(x: np.ndarray, num_classes:int = -1):
@@ -246,14 +245,24 @@ def np_one_hot(x: np.ndarray, num_classes:int = -1):
         print(f"The one_hot function only works for scalar and 1D array but x is a {len(x.shape)}D array.")
         raise ValueError
 
-def array_to_tensor(data: Data, in_place: bool = False):
-    if not(in_place):
-        data = deepcopy(data)    
+
+def str_padding(x: str, length: int, character: str = ".", after: bool = True):
+    if len(x) > length:
+        return x
     
-    for key in data.keys:
-        if isinstance(data[key], np.ndarray):
-            data[key] = torch.from_numpy(data[key])
-    return data
+    if len(character) == 1:
+        if after:
+            return x + " " + character * (length - len(x)-1)
+        else:
+            return character * (length - len(x)-1) + " " + x
+    else:
+        m = (length - len(x) - 1) // len(character)
+        r = (length - len(x) - 1) % len(character)
+        p = character * m + character[0:r]
+        if after:
+            return x + " " + p
+        else:
+            return p + " " + x
 
 
 def check_has_processed(
@@ -261,55 +270,46 @@ def check_has_processed(
         processed_file_names: Union[List[str], str] = [
             "pre_filter.pt",  "pre_transform.pt",  "test.pt",  "train.pt",  "valid.pt"]
     ):
+    prefix = "    - "
+    p_len = 50
+    
     print("1. Checking root ...")
     if os.path.isdir(root):
-        print("    - root directory ................ found")
+        print(prefix + str_padding("root directory", length=p_len) + " found")
     else:
         raise IOError
 
+    if isinstance(raw_file_names, str):
+        raw_file_names = [raw_file_names]
+    
     print("2. Checking raw files ...")
     if os.path.isdir(root + "/raw"):
-        print("    - raw file directory ............ found")
-        if isinstance(raw_file_names, str):
-            n_char = len(raw_file_names)
-            if not(os.path.isfile(root + "/raw/" + raw_file_names)):
-                print(f"    - {raw_file_names} " + "." * (30-n_char)+ " not found")
+        print(prefix + str_padding("raw file directory", length=p_len) + " found")
+        for raw_file_name in raw_file_names:
+            if not(os.path.isfile(root + "/raw/" + raw_file_name)):
+                print(prefix + str_padding(raw_file_name, length=p_len) + " not found")
                 raise IOError
             else:
-                print(f"    - {raw_file_names} " + "." * (30-n_char)+ " found")
-        else:
-            for raw_file_name in raw_file_names:
-                n_char = len(raw_file_name)
-                if not(os.path.isfile(root + "/raw/" + raw_file_name)):
-                    print(f"    - {raw_file_name} " + "." * (30-n_char)+ " not found")
-                    raise IOError
-                else:
-                    print(f"    - {raw_file_name} " + "." * (30-n_char)+ " found")
+                print(prefix + str_padding(raw_file_name, length=p_len) + " found")
     else:
-        print("    - raw file directory .......... not found")
+        print(prefix + str_padding("raw file directory", length=p_len) + " not found")
         raise IOError
+
+    if isinstance(processed_file_names, str):
+        processed_file_names = [processed_file_names]
 
     print("3. Checking processed files ...")
     flag = True
     if os.path.isdir(root + "/processed"):
-        print("    - processed file directory ...... found")
-        if isinstance(processed_file_names, str):
-            n_char = len(processed_file_names)
-            if not(os.path.isfile(root + "/processed/" + processed_file_names)):
-                print(f"    - {processed_file_names} " + "." * (30-n_char)+ " not found")
+        print(prefix + str_padding("processed file directory", length=p_len) + " found")
+        for processed_file_name in processed_file_names:
+            if not(os.path.isfile(root + "/processed/" + processed_file_name)):
+                print(prefix + str_padding(processed_file_name, length=p_len) + " not found")  
                 flag = False
             else:
-                print(f"    - {processed_file_names} " + "." * (30-n_char)+ " found")
-        else:
-            for processed_file_name in processed_file_names:
-                n_char = len(processed_file_name)
-                if not(os.path.isfile(root + "/processed/" + processed_file_name)):
-                    print(f"    - {processed_file_name} " + "." * (30-n_char)+ " not found")
-                    flag = False
-                else:
-                   print(f"    - {processed_file_name} " + "." * (30-n_char)+ " found")
+                print(prefix + str_padding(processed_file_name, length=p_len) + " found")  
     else:
-        print("    - processed file directory ...... not found")
+        print(prefix + str_padding("processed file directory", length=p_len) + " not found")
         flag = False
     
     return flag

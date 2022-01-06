@@ -4,12 +4,9 @@ import itertools
 from ART.funcs import split_list
 from copy import deepcopy
 from typing import Dict, List, Tuple, Union, Iterable, NamedTuple, Dict
-from pathos.multiprocessing import ProcessingPool
 from rdkit import Chem
 from rdkit.Chem.rdchem import Mol
 from rdkit.Chem import AllChem
-from tqdm import tqdm
-from rdkit import RDLogger
 
 
 class MolRecord(NamedTuple):
@@ -110,9 +107,13 @@ class MolReader():
 
 class SMRTSdfReader(MolReader):
     def __init__(
-            self, file_path, data: Union[List[MolRecord], None] = None,
+            self, 
+            file_path: str, 
+            data: Union[List[MolRecord], None] = None,
+            sup_info: Dict = {}, 
             limit: Union[int, None] = None) -> None:
         self._num_error = 0
+        self._sup_info = sup_info
         super().__init__(file_path=file_path, data=data, limit=limit)
 
     @property
@@ -142,16 +143,12 @@ class SMRTSdfReader(MolReader):
             if (obj is not None):
                 mol = Chem.MolFromMolBlock(obj["mol_block"])
                 if AllChem.EmbedMolecule(mol) == 0:
+                    sup_info = self._sup_info
+                    sup_info["cid"] = obj["mol_prop"]["cid"]
                     record = MolRecord(
                         mol=mol,
                         rt=float(obj["mol_prop"]["rt"]),
-                        supplementary={
-                            "cid": obj["mol_prop"]["cid"],
-                            "system": "Agilent 1100/1200 series liquid chromatography (LC) system",
-                            "username": "Xavier Domingo",
-                            "date": "2019-12-20",
-                            "rt_unit": "sec"
-                        }
+                        supplementary=sup_info
                     )
                 else:
                     raise ValueError

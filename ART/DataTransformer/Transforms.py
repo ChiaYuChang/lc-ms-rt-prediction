@@ -1,11 +1,11 @@
+import torch
 from typing import Any, Dict, Callable
-from torch_geometric.data import Data
+from ART.Data import GraphData as Data
 from ART.funcs import calc_knn_graph, calc_radius_graph, calc_dist_bw_node, calc_tilde_A
-
 
 class Transform():
 
-    def __init__(self, name:str, func: Callable[[Data], Any], args: Dict):
+    def __init__(self, name:str, func: Callable[[Data], Any], args: Dict = {}):
         self._name = name
         self._func = func
         self._args = args
@@ -41,6 +41,7 @@ def gen_discance_attr(data: Data, which: str="edge_index"):
     return calc_dist_bw_node(
         data=data, edge_index=data[which])
 
+
 gen_bond_length = Transform(
     name="edge_attr",
     func=gen_discance_attr,
@@ -62,7 +63,7 @@ gen_knn_distance = Transform(
 gen_radius_graph = Transform(
     name="radius_edge_index",
     func=calc_radius_graph,
-    args={"r": 1.5}
+    args={"radius": 1.5}
 )
 
 gen_radius_distance = Transform(
@@ -71,8 +72,25 @@ gen_radius_distance = Transform(
     args={"which": gen_radius_graph.name}
 )
 
-gen_normalize_adj_matrix = Transform(
-    name="normalize_adj_matrix",
+gen_normalized_adj_matrix = Transform(
+    name="normalized_adj_matrix",
     func=calc_tilde_A,
-    args={"self_loop": True, "which": "edge_index"}
+    args={"self_loop": True, "which": "edge_index", "to_coo": True}
+)
+
+def calc_mw_mask(data, mw_list = None, normalize: bool = True):
+    if mw_list is None:
+        raise ValueError("mw_list should not be None")
+    
+    mw_max = torch.max(mw_list)
+    mw_face = mw_max - torch.abs(mw_list - data.sup["mw"])
+    if normalize:
+        return mw_face / mw_max
+    else:
+        return mw_face
+
+gen_mw_mask = Transform(
+    name="mw_mask",
+    func=calc_mw_mask,
+    args={"mw_list": None, "normalize":True}
 )
