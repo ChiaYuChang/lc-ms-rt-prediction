@@ -1,32 +1,37 @@
-from typing import Any, NamedTuple, Tuple, List, Union, OrderedDict
+from typing import AbstractSet, Any, NamedTuple, Tuple, List, Union, OrderedDict
 
 
 class LayerParSet():
-    __name__ = "LayerParSet"
-
-    def __init__(
-            self,
-            in_channels: int,
-            out_channels: int
-            ) -> None:
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-
-
-class LinearLayerPars(LayerParSet):
 
     def __init__(
             self,
             in_channels: int,
             out_channels: int,
-            dropout: Tuple[float, bool] = (0.1, False), # (p, inplace)
-            relu: bool = False,
-            batch_norm: bool = False
+            **kwargs
             ) -> None:
-        super().__init__(in_channels, out_channels)
-        self.dropout = dropout
-        self.relu = relu
-        self.batch_norm = batch_norm
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self._keys = ["in_channels", "out_channels"]
+        for key, value in kwargs.items():
+            self._keys += [key]
+            setattr(self, key, value)
+    
+    @property
+    def keys(self):
+        return self._keys
+
+    def __getattr__(self, key: str) -> Any:
+        if key not in self._keys:
+            raise RuntimeError
+        return getattr(self, key)
+
+    def __repr__(self) -> str:
+        attrs = [None] * len(self.keys)
+        
+        for i, key in enumerate(self.keys):
+            attrs[i] = f"{key}={getattr(self, key)}"
+        attrs_str = ", ".join(attrs)
+        return f"LayerParSet({attrs_str})"
 
 
 class MultiLayerParSet():
@@ -35,15 +40,38 @@ class MultiLayerParSet():
             self,
             in_channels: int = 64,
             hidden_channels : Union[List[int], None] = None,
-            out_channels: int = 1
+            out_channels: int = 1,
+            **kwargs
         ) -> None:
         self.in_channels = in_channels
         self.hidden_channels = hidden_channels
         self.out_channels = out_channels
+        self.other_fields = {}
+        for key, value in kwargs.items():
+            self.other_fields[key] = value
 
     def unwind(self) -> OrderedDict[int, LayerParSet]:
-        raise NotImplementedError
+        in_channels = [self.in_channels] + self.hidden_channels
+        out_channels = self.hidden_channels + [self.out_channels]
+        n_layer = len(in_channels)
+        
+        for key in self.other_fields.keys():
+            self.other_fields[key] = self.broadcast(self.other_fields[key], n_layer)
     
+        lyr_pars = [None] * n_layer
+        for i in range(n_layer):
+            kwargs_dict = {}
+            
+            for key in self.other_fields.keys():
+                kwargs_dict[key] = self.other_fields[key][i]
+            
+            lyr_pars[i] = LayerParSet(
+                in_channels = in_channels[i],
+                out_channels = out_channels[i],
+                **kwargs_dict
+            )
+        return lyr_pars
+
     def broadcast(self, p, l):
         if not(isinstance(p, List)):
             p = [p]
@@ -58,40 +86,7 @@ class MultiLayerParSet():
             return q
 
 
-class PredictorPars(MultiLayerParSet):
-    
-    def __init__(
-            self,
-            in_channels: int = 64,
-            hidden_channels: Union[List[int], None] = None,
-            out_channels: int = 1,
-            dropout: Union[List[Tuple[float, bool]], Tuple[float, bool]] = 0.1,
-            relu: Union[List[bool], bool] = False,
-            batch_norm: Union[List[bool], bool] = False
-            ) -> None:
-        super().__init__(in_channels=in_channels, hidden_channels=hidden_channels, out_channels=out_channels)
-        self.dropout = dropout
-        self.relu = relu
-        self.batch_norm = batch_norm
-    
-    def unwind(self) -> OrderedDict[int, LayerParSet]:
-        in_channels = [self.in_channels] + self.hidden_channels
-        out_channels = self.hidden_channels + [self.out_channels]
-        n_layer = len(in_channels)
-        dropout = self.broadcast(self.dropout, n_layer)
-        relu = self.broadcast(self.relu, n_layer)
-        batch_norm = self.broadcast(self.batch_norm, n_layer)
-        
-        lyr_pars = OrderedDict()
-        for i in range(n_layer):
-            lyr_pars[i] = LinearLayerPars(
-                in_channels = in_channels[i],
-                out_channels = out_channels[i],
-                dropout = dropout[i],
-                relu = relu[i],
-                batch_norm = batch_norm[i]
-            )
-        return lyr_pars
+LayerParSetType = Union[MultiLayerParSet, List[LayerParSet], LayerParSet]
 
 class AttentiveFPPars(NamedTuple):
     in_channels: int

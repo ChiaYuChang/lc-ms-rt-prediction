@@ -1,43 +1,26 @@
 import torch
 
 from .GraphConvLayer import GraphConvLayer
-from ART.ParSet import PredictorPars
-from ART.funcs import predictor_par_transform
+from ART.ParSet import LayerParSet, MultiLayerParSet, LayerParSetType
 
-from collections import OrderedDict
 from torch.nn.init import xavier_normal_ as glorot_
 from torch_geometric.nn import global_add_pool
-from typing import List, Tuple, Union, NamedTuple
-
-
-class GCNLayerPar(NamedTuple):
-    in_channels: int = 128
-    out_channels: int = 128
-    dropout: Tuple[float, bool] = (0.1, False)
-    relu: bool = True
-    batch_norm: bool = False
-
-
-class KensertGCNEncoderPars(NamedTuple):
-    in_features: int = 64
-    hidden_features : Union[List[int], None] = None
-    out_features: int = 1
-    dropout: Union[List[float], float] = 0.1
-    relu: Union[List[bool], bool] = False
-    batch_norm: Union[List[bool], bool] = False
-
 
 class KensertGCN(torch.nn.Module):
     def __init__(
             self,
-            gcn_lyr_pars: Union[List[GCNLayerPar], GCNLayerPar],
-            prdctr_lyr_pars: PredictorPars
+            gcn_lyr_pars: LayerParSetType,
+            prdctr_lyr_pars: LayerParSetType
             ) -> None:
         super().__init__()
 
-        self.graph_embedder = torch.nn.Sequential()
-        if isinstance(gcn_lyr_pars, GCNLayerPar):
+        if isinstance(gcn_lyr_pars, LayerParSet):
             gcn_lyr_pars = [gcn_lyr_pars]
+
+        if isinstance(gcn_lyr_pars, MultiLayerParSet):
+            gcn_lyr_pars = gcn_lyr_pars.unwind()
+        
+        self.graph_embedder = torch.nn.Sequential()
         for i, par in enumerate(gcn_lyr_pars):
             self.graph_embedder.add_module(
                 name="gcn_{}".format(i),
@@ -52,33 +35,37 @@ class KensertGCN(torch.nn.Module):
 
         self.pooling = global_add_pool
 
-        prdctr_lyr_pars = predictor_par_transform(
-            in_features=prdctr_lyr_pars.in_features,
-            hidden_features=prdctr_lyr_pars.hidden_features,
-            out_features=prdctr_lyr_pars.out_features,
-            dropout=prdctr_lyr_pars.dropout,
-            relu=prdctr_lyr_pars.relu,
-            batch_norm=prdctr_lyr_pars.batch_norm
-        )
+        if isinstance(prdctr_lyr_pars, LayerParSet):
+            prdctr_lyr_pars = [prdctr_lyr_pars]
+
+        if isinstance(prdctr_lyr_pars, MultiLayerParSet):
+            prdctr_lyr_pars = prdctr_lyr_pars.unwind()
 
         self.predictor = torch.nn.Sequential()
-        for i in prdctr_lyr_pars.keys():
+        for i, par in enumerate(prdctr_lyr_pars):
             self.prdctr.add_module(
                 name="lnr_{}".format(i),
                 module=torch.nn.Linear(
-                    in_features=prdctr_lyr_pars[i].in_features,
-                    out_features=prdctr_lyr_pars[i].out_features
+                    in_features=par.in_features,
+                    out_features=par.out_features
                 )
             )
-            if prdctr_lyr_pars[i].dropout[0] > 0:
+            if par.dropout[0] > 0:
                 self.prdctr.add_module(
                     name="drp_{}".format(i),
                     module=torch.nn.Dropout(
-                        p=prdctr_lyr_pars[i].dropout[0],
-                        inplace=prdctr_lyr_pars[i].dropout[1]
+                        p=par.dropout[0],
+                        inplace=par.dropout[1]
                     )
                 )
-            if prdctr_lyr_pars[i].relu is True:
+            if par.batch_norm:
+                self.prdctr.add_module(
+                    name="drp_{}".format(i),
+                    module=torch.nn.BatchNorm1d(
+                        num_features=par.out_features
+                    )
+                )
+            if par.relu:
                 self.prdctr.add_module(
                     name="relu_{}".format(i),
                     module=torch.nn.ReLU()
@@ -99,8 +86,12 @@ class KensertGCN(torch.nn.Module):
     def forward(self, data):
         h0 = data.node_attr
         edge_attr = data.edge_attr
-        tilde_A = data.tilde_A
+        tilde_A = torch.sparse_coo_tensor(
+            data.normalized_adj_matrix["index"],
+            data.normalized_adj_matrix["value"],
+            (data.num_nodes, data.num_nodes)
+        )
 
         h1 = self.graph_embedder(tilde_A, h0)
-        fp = global_add_pool(h1, data.batch)
+        fp = self.pooling(h1, data.batch)
         return self.predictor(fp)
