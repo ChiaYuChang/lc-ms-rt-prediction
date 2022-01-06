@@ -1,9 +1,11 @@
 import torch
 
-from torch_geometric.data import Data, InMemoryDataset
-from tqdm.std import tqdm
-from typing import Callable, List, Union, Optional
+from ART.Data import GraphData as Data
 from ART.DataSplitter import RandomSplitter, DataSplitter
+# from torch_geometric.data import Data, InMemoryDataset
+from torch_geometric.data import InMemoryDataset
+from tqdm import tqdm
+from typing import Callable, List, Union, Optional
 
 
 class SMRT(InMemoryDataset):

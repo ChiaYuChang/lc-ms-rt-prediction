@@ -4,10 +4,11 @@ import pandas as pd
 import numpy as np
 import random
 
-from collections import defaultdict
-from torch_geometric.data import Data
-from typing import Callable, Union
 from ART.funcs import gen_random_str
+from ART.Data import GraphData as Data
+from collections import defaultdict
+# from torch_geometric.data import Data
+from typing import Callable, Union
 
 class DataSplitter:
     def __init__(

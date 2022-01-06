@@ -10,7 +10,8 @@ from ART.funcs import split_list, calc_dist_bw_node, np_one_hot
 from ART.funcs import calc_knn_graph, calc_radius_graph
 from pathos.multiprocessing import ProcessingPool
 from rdkit.Chem.rdchem import Mol, Atom, Bond
-from torch_geometric.data import Data
+# from torch_geometric.data import Data
+from ART.Data import GraphData as Data
 from torch.nn.functional import one_hot
 from tqdm import tqdm
 from typing import Dict, List, Union, Dict
@@ -224,6 +225,10 @@ class Featurizer():
 
         mol_features = self.gen_mol_features(mol=mol)
         
+        if "mw" in mol_features.keys():
+            mol_record.supplementary["mw"] = mol_features["mw"][0]
+        mol_record.supplementary["rt"] = float(mol_record.rt)
+
         if self._use_np:
             features_dict["graph_attr"] = np.concatenate(
                 [mol_features[item.name] for item in self.mol_feature_list])
@@ -232,6 +237,7 @@ class Featurizer():
             features_dict["graph_attr"] = torch.cat(
                 [mol_features[item.name] for item in self.mol_feature_list])
 
+       
         features_dict["sup"] = {**mol_record.supplementary, **self.gen_sup_features(mol=mol)}
 
         atom_features = [None] * mol.GetNumAtoms()
