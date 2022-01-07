@@ -14,14 +14,14 @@ from torch_geometric.loader import DataLoader
 from torch.optim import Optimizer
 from tqdm import tqdm
 from scipy.stats import spearmanr, pearsonr
-from typing import Union
+from typing import List, Union
 
 
 class Evaluater():
     def __init__(
             self,
-            train_loader: DataLoader,
-            valid_loader: DataLoader,
+            train_loader: Union[DataLoader, List[Data]],
+            valid_loader: Union[DataLoader, List[Data]],
             learning_rate: Union[float, int],
             embd_lyr_pars_dict: OrderedDict,
             afp_mdl_pars: AttentiveFPPars,

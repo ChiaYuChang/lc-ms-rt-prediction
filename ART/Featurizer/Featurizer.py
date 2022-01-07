@@ -118,7 +118,7 @@ class Featurizer():
                     features_dict[f.name] = np_one_hot(
                         np.array(f.mapping[f.func(obj)]),
                         num_classes=f.num_level
-                    )
+                    ).astype(np.float32)
                 else:
                     features_dict[f.name] = one_hot(
                         torch.tensor(f.mapping[f.func(obj)]),
@@ -303,9 +303,9 @@ class Featurizer():
                 data=data, type_edge_index="radius_edge_index")
 
         if self._use_np:
-            data["y"] = np.array([mol_record.rt])
+            data["y"] = np.array([mol_record.rt], dtype=np.float32)
         else:
-            data["y"] = torch.tensor([mol_record.rt])
+            data["y"] = torch.tensor([mol_record.rt], dtype=np.float32)
 
         return data
     

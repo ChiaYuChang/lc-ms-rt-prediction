@@ -232,11 +232,11 @@ def np_one_hot(x: np.ndarray, num_classes:int = -1):
         num_classes = np.max(x)
     
     if len(x.shape) == 0:
-        y = np.zeros((num_classes), dtype=np.float32)
+        y = np.zeros((num_classes))
         y[int(x-1)] = 1.0
         return y
     elif len(x.shape) == 1:
-        y = np.zeros((x.shape[0], num_classes), dtype=np.float32)
+        y = np.zeros((x.shape[0], num_classes))
         for i in range(len(x)):
             print(f"({i}, {x[i]-1})")
             y[i, int(x[i]-1)] = 1.0
