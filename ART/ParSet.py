@@ -1,8 +1,10 @@
-from typing import AbstractSet, Any, NamedTuple, Tuple, List, Union, OrderedDict
+from typing import AbstractSet, Any, Callable, NamedTuple, Optional, Tuple, List, Type, Union, OrderedDict
+import torch
+import torch_geometric
 
 
 class LayerParSet():
-
+    __name__ = "LayerParSet"
     def __init__(
             self,
             in_channels: int,
@@ -22,7 +24,7 @@ class LayerParSet():
 
     def __getattr__(self, key: str) -> Any:
         if key not in self._keys:
-            raise RuntimeError
+            raise AttributeError(f"The attribute '{key}' could not be found.")
         return getattr(self, key)
 
     def __repr__(self) -> str:
@@ -31,26 +33,122 @@ class LayerParSet():
         for i, key in enumerate(self.keys):
             attrs[i] = f"{key}={getattr(self, key)}"
         attrs_str = ", ".join(attrs)
-        return f"LayerParSet({attrs_str})"
+        return f"{self.__name__}({attrs_str})"
+
+
+class LinearLayerParSet(LayerParSet):
+    __name__ = "LinearLayerParSet"
+    def __init__(
+            self,
+            in_channels: int,
+            out_channels: int,
+            bias: bool,
+            dropout: Tuple[float, bool],
+            relu: True,
+            batch_norm=True
+            ) -> None:
+        super().__init__(
+            in_channels=in_channels, 
+            out_channels=out_channels,
+            bias=bias,
+            dropout=dropout,
+            relu=relu,
+            batch_norm=batch_norm)
+
+
+class GCNLayerParSet(LayerParSet):
+    __name__ = "GCNLayerParSet"
+    def __init__(
+            self,
+            in_channels: int,
+            out_channels: int,
+            dropout: Tuple[float, bool],
+            relu: True,
+            batch_norm=True) -> None:
+        super().__init__(
+            in_channels = in_channels,
+            out_channels = out_channels,
+            dropout=dropout,
+            relu=relu,
+            batch_norm=batch_norm)
+
+
+class GATConvLayerPar(LayerParSet):
+    __name__ = "GATConvLayerPar"
+    def __init__(
+            self,
+            in_channels: int,
+            out_channels: int,
+            heads:int = 1,
+            concat: bool = True,
+            negative_slope: float = 0.2,
+            dropout: Tuple[float, bool] = (0.0, False),
+            add_self_loops: bool = True,
+            edge_dim: Optional[int] = None,
+            bias: bool = True,
+             **kwargs) -> None:
+        
+        super().__init__(
+            in_channels = in_channels,
+            out_channels = out_channels,
+            heads = heads,
+            concat = concat,
+            negative_slope = negative_slope,
+            dropout = dropout,
+            add_self_loops = add_self_loops,
+            edge_dim = edge_dim,
+            bias = bias,
+            **kwargs)
+
+
+class SAGPoolingPar(LayerParSet):
+    __name__ = "SAGPoolingPar"
+    def __init__(
+            self,
+            in_channels: int,
+            out_channels: int,
+            ratio: Union[float, int] = 0.5,
+            GNN: Callable = torch_geometric.nn.conv.GraphConv,
+            min_score: Optional[float] = None,
+            multiplier: Optional[float] = 1,
+            nonlinearity: Callable = torch.tanh,
+            **kwargs) -> None:
+        super().__init__(
+            in_channels = in_channels,
+            out_channels = out_channels,
+            ratio = ratio,
+            GNN = GNN,
+            min_score = min_score,
+            multiplier = multiplier,
+            nonlinearity = nonlinearity,
+            **kwargs)
 
 
 class MultiLayerParSet():
-
+    __name__ = "MultiLayerParSet"
+    
     def __init__(
             self,
             in_channels: int = 64,
             hidden_channels : Union[List[int], None] = None,
             out_channels: int = 1,
+            output_obj: Optional[Type] = LayerParSet,
             **kwargs
         ) -> None:
         self.in_channels = in_channels
         self.hidden_channels = hidden_channels
         self.out_channels = out_channels
+
+        if not(issubclass(output_obj, LayerParSet)):
+            raise TypeError("OutputObj should be a subclass of LayerParSet")
+        self.output_obj = output_obj
+
         self.other_fields = {}
         for key, value in kwargs.items():
             self.other_fields[key] = value
 
-    def unwind(self) -> OrderedDict[int, LayerParSet]:
+    def unwind(self) -> List[LayerParSet]:
+
         in_channels = [self.in_channels] + self.hidden_channels
         out_channels = self.hidden_channels + [self.out_channels]
         n_layer = len(in_channels)
@@ -65,7 +163,7 @@ class MultiLayerParSet():
             for key in self.other_fields.keys():
                 kwargs_dict[key] = self.other_fields[key][i]
             
-            lyr_pars[i] = LayerParSet(
+            lyr_pars[i] = self.output_obj(
                 in_channels = in_channels[i],
                 out_channels = out_channels[i],
                 **kwargs_dict
@@ -87,12 +185,3 @@ class MultiLayerParSet():
 
 
 LayerParSetType = Union[MultiLayerParSet, List[LayerParSet], LayerParSet]
-
-class AttentiveFPPars(NamedTuple):
-    in_channels: int
-    hidden_channels: int
-    out_channels: int
-    edge_dim: int
-    num_layers: int
-    num_timesteps: int
-    dropout: float = 0.0

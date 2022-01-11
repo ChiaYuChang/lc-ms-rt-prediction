@@ -288,7 +288,7 @@ class ModelEvaluator():
             )
             print(
                 f" - RMSE : {evaluate_result['rmse']['mu']:.3f}" +\
-                f"; - MAE : {evaluate_result['mae']['mu']:.3f}" +\
+                f"; MAE : {evaluate_result['mae']['mu']:.3f}" +\
                 f"; Counter : {counter:02d}"
             )
 
