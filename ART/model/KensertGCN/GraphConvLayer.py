@@ -14,7 +14,7 @@ class GraphConvLayer(nn.Module):
             batch_norm: bool = False,
             **kwargs):
         super().__init__(**kwargs)
-
+        
         self.dropout = nn.Dropout(p=dropout[0], inplace=dropout[1])
 
         self.W_0 = nn.parameter.Parameter(
@@ -47,17 +47,15 @@ class GraphConvLayer(nn.Module):
         glorot_(self.W_0)
         glorot_(self.W_1)
 
-    def forward(self, tilde_A, node_attr):
+    def forward(self, x):
         # \tilde{A} = D^{-1/2}AD^{-1/2}
-        A = tilde_A
-        H0 = node_attr
-
-        H1 = torch.add(torch.matmul(H0, self.W_0), torch.linalg.multi_dot([A, H0, self.W_1]))
-        H1 = self.batch_norm(H1)
-        H1 = self.activation(H1)
-        H1 = self.dropout(H1)
+        A, h0 = x 
+        h1 = torch.add(torch.matmul(h0, self.W_0), torch.linalg.multi_dot([A, h0, self.W_1]))
+        h1 = self.batch_norm(h1)
+        h1 = self.activation(h1)
+        h1 = self.dropout(h1)
 
         # if mask:
         #     H_mask = mask[1][:, :, None]
         #     H *= tf.cast(H_mask, H.dtype)
-        return H1
+        return (A, h1)
