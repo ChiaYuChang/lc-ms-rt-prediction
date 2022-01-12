@@ -50,7 +50,7 @@ class GraphConvLayer(nn.Module):
     def forward(self, x):
         # \tilde{A} = D^{-1/2}AD^{-1/2}
         A, h0 = x 
-        h1 = torch.add(torch.matmul(h0, self.W_0), torch.linalg.multi_dot([A, h0, self.W_1]))
+        h1 = torch.add(torch.mm(h0, self.W_0), torch.linalg.multi_dot([A, h0, self.W_1]))
         h1 = self.batch_norm(h1)
         h1 = self.activation(h1)
         h1 = self.dropout(h1)

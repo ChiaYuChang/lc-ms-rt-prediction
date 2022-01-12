@@ -8,6 +8,7 @@ from pymongo.collection import Collection
 from pymongo.results import UpdateResult, InsertOneResult, InsertManyResult
 from typing import Callable, Dict, NamedTuple, Optional
 from ART.funcs import json_snapshot_to_doc, doc_to_json_snapshot
+from time import sleep
 
 class MongoDB():
 
@@ -25,7 +26,7 @@ class MongoDB():
         else:
             self._db = None
         
-        self._snapshot_id = None
+        self._snapshot_id = snapshot_id
 
     @property
     def username(self) -> str:
@@ -84,6 +85,7 @@ class MongoDB():
             return mongodb_opr_rslt
 
         # for insertion, replacement
+        retry = 0
         while not(mongodb_opr_rslt.acknowledged):
             mongodb_opr_rslt = func(**kargs)
             retry += 1

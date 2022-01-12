@@ -1,9 +1,14 @@
 /Profile/
-/Data
+
 /Data/**/*.json
 /Data/**/*.sdf
 /Data/**/*.pt
 /Data/**/*.csv
+!*/.keep
 
 /ART/**/__pycache__
 /ART/**/.vscode
+
+/work
+/.nextflow.log
+/.nextflow
