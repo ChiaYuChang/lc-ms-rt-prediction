@@ -16,7 +16,7 @@ from string import ascii_letters, digits
 from ART.Data import GraphData as Data
 from torch_geometric.nn import radius_graph, knn_graph
 from torch_geometric.utils import to_dense_adj
-from typing import Union, List, Dict, OrderedDict
+from typing import Union, List, Dict, OrderedDict, Optional
 
 
 def iqr(x: Union[pd.Series, np.array]):
@@ -268,48 +268,67 @@ def str_padding(x: str, length: int, character: str = ".", after: bool = True):
 def check_has_processed(
         root: str, raw_file_names: Union[List[str], str],
         processed_file_names: Union[List[str], str] = [
-            "pre_filter.pt",  "pre_transform.pt",  "test.pt",  "train.pt",  "valid.pt"]
+            "pre_filter.pt",  "pre_transform.pt",  "test.pt",  "train.pt",  "valid.pt"],
+        indent: str="\t"
     ):
     prefix = "    - "
     p_len = 50
     
-    print("1. Checking root ...")
+    print(indent + "1. Checking root ...")
     if os.path.isdir(root):
-        print(prefix + str_padding("root directory", length=p_len) + " found")
+        print(indent + prefix + str_padding("root directory", length=p_len) + " found")
     else:
-        raise IOError
+        raise IOError("Root directory does not exist.")
 
     if isinstance(raw_file_names, str):
         raw_file_names = [raw_file_names]
     
-    print("2. Checking raw files ...")
+    print(indent + "2. Checking raw files ...")
     if os.path.isdir(root + "/raw"):
-        print(prefix + str_padding("raw file directory", length=p_len) + " found")
+        print(indent + prefix + str_padding("raw file directory", length=p_len) + " found")
         for raw_file_name in raw_file_names:
             if not(os.path.isfile(root + "/raw/" + raw_file_name)):
-                print(prefix + str_padding(raw_file_name, length=p_len) + " not found")
+                print(indent + prefix + str_padding(raw_file_name, length=p_len) + " not found")
                 raise IOError
             else:
-                print(prefix + str_padding(raw_file_name, length=p_len) + " found")
+                print(indent + prefix + str_padding(raw_file_name, length=p_len) + " found")
     else:
-        print(prefix + str_padding("raw file directory", length=p_len) + " not found")
+        print(indent + prefix + str_padding("raw file directory", length=p_len) + " not found")
         raise IOError
 
     if isinstance(processed_file_names, str):
         processed_file_names = [processed_file_names]
 
-    print("3. Checking processed files ...")
+    print(indent + "3. Checking processed files ...")
     flag = True
     if os.path.isdir(root + "/processed"):
-        print(prefix + str_padding("processed file directory", length=p_len) + " found")
+        print(indent + prefix + str_padding("processed file directory", length=p_len) + " found")
         for processed_file_name in processed_file_names:
             if not(os.path.isfile(root + "/processed/" + processed_file_name)):
-                print(prefix + str_padding(processed_file_name, length=p_len) + " not found")  
+                print(indent + prefix + str_padding(processed_file_name, length=p_len) + " not found")  
                 flag = False
             else:
-                print(prefix + str_padding(processed_file_name, length=p_len) + " found")  
+                print(indent + prefix + str_padding(processed_file_name, length=p_len) + " found")  
     else:
-        print(prefix + str_padding("processed file directory", length=p_len) + " not found")
+        print(indent + prefix + str_padding("processed file directory", length=p_len) + " not found")
         flag = False
     
     return flag
+
+
+def hop(edge_index: torch.Tensor,
+        num_nodes: Optional[int] = None,
+        rm_self_loop: Optional[bool] = True
+        ) -> torch.Tensor:
+    device = edge_index.device   
+    if num_nodes is None:
+        num_nodes = edge_index.max() + 1
+    m = torch.sparse_coo_tensor(
+        indices=edge_index,
+        values=torch.ones(edge_index.shape[1]).to(device),
+        size=(num_nodes, num_nodes)
+    )
+    m_hop = (m + torch.sparse.mm(m, m)).coalesce().indices()
+    if rm_self_loop:
+        m_hop = m_hop[:, m_hop[0, :] != m_hop[1, :]]
+    return m_hop
