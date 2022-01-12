@@ -101,9 +101,9 @@ class ModelEvaluator():
         if console:
             print(
                 " - RAM usage: " + "; ".join([
-                    f"CPU  : {self.cpu_ram_usage():05.2f}%",
-                    f"SWAP : {self.swap_usage():05.2f}%",
-                    f"GPU  : {self.gpu_ram_usage():05.2f}%"
+                    f"CPU : {self.cpu_ram_usage():05.2f}%",
+                    f"SWAP: {self.swap_usage():05.2f}%",
+                    f"GPU : {self.gpu_ram_usage():05.2f}%"
                 ])
             )
 
@@ -209,15 +209,20 @@ class ModelEvaluator():
                     self.valid_loader, total=len(self.valid_loader),
                     desc=" - S", ncols=self._tqdm_ncols)):
                 data = data.to(self.device)
-                y_hat = self.model(data)
-                rmse[idx] = torch.sqrt(mse_loss(data.y, y_hat))
-                mae[idx] = l1_loss(data.y, y_hat)
-                rt_true_batch = y_hat.squeeze().to("cpu").numpy()
-                rt_prdt_batch = data.y.to("cpu").numpy()
-                r, _ = pearsonr(rt_true_batch, rt_prdt_batch)
-                rho, _ = spearmanr(rt_true_batch, rt_prdt_batch)
+                
+                targets = data.y
+                outputs = self.model(data)
+                
+                rmse[idx] = torch.sqrt(mse_loss(targets, outputs))
+                mae[idx] = l1_loss(targets, outputs)
+                
+                targets = targets.to("cpu").numpy()
+                outputs = outputs.squeeze().to("cpu").numpy()
+                r, _ = pearsonr(outputs, targets)
+                rho, _ = spearmanr(outputs, targets)
                 rt_r[idx] = r
                 rt_rho[idx] = rho
+        
         rmse = rmse.to("cpu").numpy()
         mae = mae.to("cpu").numpy()
         self.ram_cleanup()
@@ -240,7 +245,7 @@ class ModelEvaluator():
             }
         }
 
-    def run(self):
+    def run(self, trial_index: Optional[int] = None):
         epoch = 0
         min_loss_mu = 1e10
         min_loss_std = 1e10
@@ -256,7 +261,10 @@ class ModelEvaluator():
         print("=" * divider_len + " Start " + "=" * divider_len)
 
         while epoch < self._max_epoch:
-            print(f"Epoch : {epoch:05d}")
+            if trial_index is None:
+                print(f"Epoch: {epoch:05d}")
+            else:
+                print(f"Trial: {trial_index:02d} Epoch: {epoch:05d}")
             train_loss, _ = self.train()
 
             if train_loss is torch.nan or train_loss is None:
@@ -274,22 +282,22 @@ class ModelEvaluator():
                 min_loss_std = valid_loss_std
                 counter = 0
             else:
-                if epoch > 25:
+                if (epoch > 50): # dropout
                     counter += 1
-                if counter > 15:
+                if counter > 25:
                     break
 
             epoch += 1
 
             evaluate_result = self.evaluate()
             print(
-                f" - Loss (Train) : {train_loss_mu:5.3f}" +\
-                f"; Loss (Valid) : {valid_loss_mu:5.3f}"
+                f" - Loss (Train): {train_loss_mu:5.3f}" +\
+                f"; Loss (Valid): {valid_loss_mu:5.3f}"
             )
             print(
-                f" - RMSE : {evaluate_result['rmse']['mu']:.3f}" +\
-                f"; MAE : {evaluate_result['mae']['mu']:.3f}" +\
-                f"; Counter : {counter:02d}"
+                f" - RMSE: {evaluate_result['rmse']['mu']:.3f}" +\
+                f"; MAE: {evaluate_result['mae']['mu']:.3f}" +\
+                f"; Counter: {counter:02d}"
             )
 
         evaluate_result = self.evaluate()
