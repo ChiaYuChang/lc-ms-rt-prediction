@@ -16,7 +16,7 @@ from string import ascii_letters, digits
 from ART.Data import GraphData as Data
 from torch_geometric.nn import radius_graph, knn_graph
 from torch_geometric.utils import to_dense_adj
-from typing import Union, List, Dict, OrderedDict, Optional
+from typing import Tuple, Union, List, Dict, OrderedDict, Optional
 
 
 def iqr(x: Union[pd.Series, np.array]):
@@ -65,9 +65,11 @@ def doc_to_json_snapshot(doc: dict) -> dict:
             binary_snapshot = zlib.decompress(snapshot)
             binary_sha256 = sha256(binary_snapshot)
 
-            print(">  Validate SHA256")
+            print(">  Validate SHA256 ...", end="")
             if binary_sha256.hexdigest() != doc["sha256"]:
+                print("Not matched")
                 return None
+            print("OK")
     return json.loads(binary_snapshot.decode())
 
 
@@ -332,3 +334,38 @@ def hop(edge_index: torch.Tensor,
     if rm_self_loop:
         m_hop = m_hop[:, m_hop[0, :] != m_hop[1, :]]
     return m_hop
+
+
+def n_ordered_hop(
+        edge_index: torch.Tensor,
+        num_nodes: Optional[int] = None,
+        rm_self_loop: Optional[bool] = True,
+        n_hop: Optional[int] = 2,
+        ) ->  Tuple[torch.Tensor, int]:
+    
+    if n_hop == 1:
+        return (edge_index, 0)
+    
+    device = edge_index.device   
+    if num_nodes is None:
+        num_nodes = edge_index.max() + 1
+    m = torch.sparse_coo_tensor(
+        indices=edge_index,
+        values=torch.ones(edge_index.shape[1]).to(device),
+        size=(num_nodes, num_nodes),
+        dtype=torch.float
+    )
+    m_mask = m.to_dense().bool().logical_not()
+    if rm_self_loop:
+        m_mask = torch.logical_and(
+            m_mask,
+            torch.eye(num_nodes, dtype=torch.bool).logical_not().to(device)
+        )
+    
+    mn = m + torch.sparse.mm(m, m)
+    for _ in range(n_hop-2):
+        mn = m + torch.sparse.mm(mn, m)
+    mn = mn.to_dense().bool()
+    new_edges = torch.logical_and(mn, m_mask).to_sparse().indices()
+    
+    return (torch.cat((edge_index, new_edges), axis=1), new_edges.shape[1])

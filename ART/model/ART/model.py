@@ -1,34 +1,51 @@
+import imp
 import torch
 
-from .GraphConvLayer import GraphConvLayer
-from ART.ParSet import LayerParSet, MultiLayerParSet, LayerParSetType
+from ART.model.ART.AttrsEncoderLayers import AttrsEncoderLayers
+from ART.model.KensertGCN.GraphConvLayer import GraphConvLayer
+from ART.ParSet import LayerParSet, MultiLayerParSet, LayerParSetType, AttrsEncoderPar
 
-from typing import Union, Optional
+from typing import Optional, Union
 from torch import nn
+from torch_geometric.data import Data
+from torch_geometric.nn import global_add_pool
 from torch.nn.init import xavier_normal_ as glorot_
-from torch_geometric import nn as pyg_nn
 
-
-class KensertGCN(nn.Module):
+class ARTAttrEncoderGCN(nn.Module):
     def __init__(
             self,
+            attr_emdb_lyr_pars: AttrsEncoderPar,
             gcn_lyr_pars: Union[LayerParSetType, MultiLayerParSet],
             prdctr_lyr_pars: Union[LayerParSetType, MultiLayerParSet],
-            which_tilde_A: Optional[str] = "normalized_adj_matrix",
-            which_node_attr: Optional[str] = "node_attr"
-            ) -> None:
+            which_node_attr: Optional[str] = "node_attr",
+            which_edge_attr: Optional[str] = "egde_attr",
+            which_edge_index: Optional[str] = "edge_index",
+            which_tilde_A: Optional[str] = "normalized_adj_matrix"
+            ):
         super().__init__()
         
+        self.attr_embedder = AttrsEncoderLayers(
+            num_node_attr = attr_emdb_lyr_pars.num_node_attr,
+            num_edge_attr = attr_emdb_lyr_pars.num_edge_attr,
+            out_channels = attr_emdb_lyr_pars.out_channels,
+            hidden_channels = attr_emdb_lyr_pars.hidden_channels,
+            n_hop = attr_emdb_lyr_pars.n_hop,
+            dropout = attr_emdb_lyr_pars.dropout,
+            direction = attr_emdb_lyr_pars.direction
+        )
+
         self._which_tilde_A = which_tilde_A
         self._which_node_attr = which_node_attr
-        
+        self._which_edge_attr = which_edge_attr
+        self._which_edge_index = which_edge_index
+
         if isinstance(gcn_lyr_pars, LayerParSet):
             gcn_lyr_pars = [gcn_lyr_pars]
 
         if isinstance(gcn_lyr_pars, MultiLayerParSet):
             gcn_lyr_pars = gcn_lyr_pars.unwind()
         
-        self.graph_embedder = nn.Sequential()
+        self.graph_embedder = torch.nn.Sequential()
         for i, par in enumerate(gcn_lyr_pars):
             self.graph_embedder.add_module(
                 name="gcn_{}".format(i),
@@ -40,7 +57,7 @@ class KensertGCN(nn.Module):
                     batch_norm=par.batch_norm
                 )
             )
-        self.pooling = pyg_nn.global_add_pool
+        self.pooling = global_add_pool
 
         if isinstance(prdctr_lyr_pars, LayerParSet):
             prdctr_lyr_pars = [prdctr_lyr_pars]
@@ -48,12 +65,12 @@ class KensertGCN(nn.Module):
         if isinstance(prdctr_lyr_pars, MultiLayerParSet):
             prdctr_lyr_pars = prdctr_lyr_pars.unwind()
 
-        self.predictor = nn.Sequential()
+        self.predictor = torch.nn.Sequential()
         for i, par in enumerate(prdctr_lyr_pars):
-            fc_lyr = nn.Sequential()
+            fc_lyr = torch.nn.Sequential()
             fc_lyr.add_module(
                 name="lnr_{}".format(i),
-                module=nn.Linear(
+                module=torch.nn.Linear(
                     in_features=par.in_channels,
                     out_features=par.out_channels,
                     bias=par.bias
@@ -62,7 +79,7 @@ class KensertGCN(nn.Module):
             if par.dropout[0] > 0:
                 fc_lyr.add_module(
                     name="drp_{}".format(i),
-                    module=nn.Dropout(
+                    module=torch.nn.Dropout(
                         p=par.dropout[0],
                         inplace=par.dropout[1]
                     )
@@ -70,14 +87,14 @@ class KensertGCN(nn.Module):
             if par.batch_norm:
                 fc_lyr.add_module(
                     name="drp_{}".format(i),
-                    module=nn.BatchNorm1d(
+                    module=torch.nn.BatchNorm1d(
                         num_features=par.out_channels
                     )
                 )
             if par.relu:
                 fc_lyr.add_module(
                     name="relu_{}".format(i),
-                    module=nn.ReLU()
+                    module=torch.nn.ReLU()
                 )
             
             self.predictor.add_module(
@@ -88,6 +105,8 @@ class KensertGCN(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
+        self.attr_embedder.reset_parameters()
+        
         def embedder_init_weights_(m):
             reset_parameters = getattr(m, "reset_parameters", None)
             if callable(reset_parameters):
@@ -96,22 +115,27 @@ class KensertGCN(nn.Module):
         self.graph_embedder.apply(embedder_init_weights_)
 
         def predictor_init_weights_(m, bias=0.01):
-            if isinstance(m, nn.Linear):
+            if isinstance(m, torch.nn.Linear):
                 glorot_(m.weight)
                 m.bias.data.fill_(bias)
 
         self.predictor.apply(predictor_init_weights_)
+    
+    def forward(self, data: Data):
+        mixed_attr = self.attr_embedder(
+            edge_attr=data[self._which_edge_attr],
+            node_attr=data[self._which_node_attr],
+            edge_index=data[self._which_edge_index],
+            num_nodes=data.num_nodes
+        )
 
-    def forward(self, data):
-        h0 = data[self._which_node_attr]
-        # h0 = data.node_attr
         tilde_A = torch.sparse_coo_tensor(
             data[self._which_tilde_A]["index"],
             data[self._which_tilde_A]["value"],
             (data.num_nodes, data.num_nodes)
         )
 
-        _, h1 = self.graph_embedder((tilde_A, h0))
+        _, h1 = self.graph_embedder((tilde_A, mixed_attr))
         fingerprint = self.pooling(h1, data.batch)
         predicted_y = self.predictor(fingerprint)
         return predicted_y

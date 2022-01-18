@@ -124,6 +124,34 @@ class SAGPoolingPar(LayerParSet):
             **kwargs)
 
 
+class AttrsEncoderPar(LayerParSet):
+    __name__ = "AttrsEncoderPar"
+
+    def __init__(
+            self,
+            num_node_attr: int,
+            num_edge_attr: int,
+            out_channels: int,
+            hidden_channels: Optional[int] = None,
+            n_hop: Optional[int] = 1,
+            dropout: Optional[float] = 0.0,
+            which_edge_index: Optional[str] = "edge_index",
+            direction: Optional[str] = "out") -> None:
+        
+        in_channels = num_node_attr + num_edge_attr
+        
+        super().__init__(
+            in_channels=in_channels, 
+            out_channels=out_channels,
+            num_node_attr=num_node_attr,
+            num_edge_attr=num_edge_attr,
+            hidden_channels=hidden_channels,
+            n_hop=n_hop,
+            dropout=dropout,
+            which_edge_index=which_edge_index,
+            direction=direction)
+
+
 class MultiLayerParSet():
     __name__ = "MultiLayerParSet"
     

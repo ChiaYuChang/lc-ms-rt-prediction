@@ -2,7 +2,7 @@ import torch
 from typing import Any, Dict, Callable
 from ART.Data import GraphData as Data
 from ART.funcs import calc_knn_graph, calc_radius_graph, calc_dist_bw_node, calc_tilde_A
-
+from ART.funcs import hop
 class Transform():
 
     def __init__(self, name:str, func: Callable[[Data], Any], args: Dict = {}):
@@ -93,4 +93,16 @@ gen_mw_mask = Transform(
     name="mw_mask",
     func=calc_mw_mask,
     args={"mw_list": None, "normalize":True}
+)
+
+def n_hop(data, n: int = 1, rm_self_loop: bool = True):
+    n_hop_edge_index = data.edge_index
+    for i in range(n): 
+        n_hop_edge_index = hop(n_hop_edge_index, data.num_nodes, rm_self_loop)
+    return n_hop_edge_index
+
+gen_n_hop_edge_index = Transform(
+    name="n_hop_edge_index",
+    func=n_hop,
+    args={"n": 1, "rm_self_loop": True}
 )

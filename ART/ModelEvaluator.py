@@ -27,8 +27,9 @@ class ModelEvaluator():
             valid_loader: Union[DataLoader, List[Data]],
             device: torch.device = torch.device("cpu"),
             weight: Optional[List[float]] = torch.tensor(1),
-            max_epoch: int = 100,
-            tqdm_ncols: int = 70) -> None:
+            count_down_thr: Optional[int] = 50,
+            max_epoch: Optional[int] = 100,
+            tqdm_ncols: Optional[int] = 70) -> None:
         
         self._model = model
         self._optim = optimizer
@@ -41,6 +42,7 @@ class ModelEvaluator():
         self._max_epoch = max_epoch
         self._tqdm_ncols = tqdm_ncols
         self._device = device
+        self._count_down_thr = count_down_thr
         self.to()
         return None
 
@@ -282,7 +284,7 @@ class ModelEvaluator():
                 min_loss_std = valid_loss_std
                 counter = 0
             else:
-                if (epoch > 50): # dropout
+                if (epoch > self._count_down_thr): # dropout
                     counter += 1
                 if counter > 25:
                     break

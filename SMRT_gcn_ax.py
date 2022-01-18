@@ -93,7 +93,7 @@ if __name__ == '__main__':
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
     # %%
-    ax_exp_name = "Classification_Test"
+    ax_exp_name = "202201180018"
     ax_snapshot_id, ax_snapshot = snapshot_db.read_snapshot({"name": ax_exp_name})
     snapshot_db.id = ax_snapshot_id
     ax_client = AxClient()
