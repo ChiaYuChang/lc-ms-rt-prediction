@@ -5,6 +5,7 @@ import pickle
 
 from ART.DataSet import SMRT
 from ART.DataSplitter import RandomSplitter
+# from ART.DataSplitter import ScaffoldSplitter
 from ART.Featurizer.FeatureSet import DefaultFeatureSet
 from ART.Featurizer.Featurizer import Featurizer, ParallelFeaturizer
 from ART.FileReaders import ParallelMolReader
@@ -14,6 +15,7 @@ from ART.DataTransformer.Transforms import gen_mw_mask, gen_normalized_adj_matri
 # from ART.DataTransformer.Transforms import gen_knn_graph, gen_knn_distance
 # from ART.DataTransformer.Transforms import gen_radius_graph, gen_radius_distance
 from ART.funcs import check_has_processed, data_to_doc, doc_to_data
+from ART.DataTransformer.Transforms import gen_mw_mask, gen_mw_ppm
 
 from multiprocessing import cpu_count
 from pathos.multiprocessing import ProcessingPool
@@ -33,7 +35,6 @@ def pre_filter(data, thr: float = 300.0) -> bool:
     else:
         return False
 
-
 if __name__ == '__main__':
     root = "./Data/SMRT"
     raw_file_names = "SMRT_dataset.sdf"
@@ -46,7 +47,6 @@ if __name__ == '__main__':
                                   "train.pt",  "valid.pt",  "smrt_mw.pt"],
             indent= "    "
         )):
-
         print(prefix + f"Calculating descriptors")
         n_jobs = cpu_count() // 4 * 3
         print(prefix + f"Using {n_jobs} cores for preprocessing")
@@ -111,11 +111,14 @@ if __name__ == '__main__':
         print("(6/7) Setting pre-transform function")
         with open("/".join([root, "processed", "smrt_mw.pt"]), "rb") as f:
             smrt_mw = pickle.load(f)
-        gen_mw_mask.args["mw_list"] =  smrt_mw
+
+        gen_mw_ppm.args["mw_list"] =  smrt_mw 
+
         pre_transform = DataTransformer(
             transform_list=[
                 gen_normalized_adj_matrix,
-                gen_mw_mask #,
+                gen_mw_ppm,
+                gen_mw_mask#,
                 # gen_knn_graph,
                 # gen_knn_distance
                 # gen_radius_graph,
@@ -125,6 +128,7 @@ if __name__ == '__main__':
             rm_sup_info=True
         )
 
+        # ScaffoldSplitter()
         print("(7/7) Setting up InMemoryDataSet")
         smrt = SMRT(
             root=root,
@@ -134,5 +138,6 @@ if __name__ == '__main__':
             splitter=RandomSplitter(seed=20211227)
         )
         RDLogger.EnableLog('rdApp.info')
+
     else:
         print("The small molecule retention time (SMRT) dataset has already been processed.")

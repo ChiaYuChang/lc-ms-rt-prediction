@@ -46,6 +46,7 @@ class DataSplitter:
         print(f'Setting {new_seed} as new random seed.')
         self._seed = new_seed
 
+    @property
     def __name__(self) -> str:
         return "DataSplitter"
 
@@ -85,6 +86,7 @@ class RandomSplitter(DataSplitter):
             frac_test=frac_test, seed=seed
         )
 
+    @property
     def __name__(self) -> str:
         return "RandomSplitter"
 
@@ -131,6 +133,7 @@ class CidRandomSplitter(DataSplitter):
         else:
             self._get_cid = get_cid
 
+    @property
     def __name__(self) -> str:
         return "CidRandomSplitter"
 
@@ -183,6 +186,7 @@ class ScaffoldSplitter(DataSplitter):
         else:
             self._get_scaffold = get_scaffold
 
+    @property
     def __name__(self) -> str:
         return "ScaffoldSplitter"
 

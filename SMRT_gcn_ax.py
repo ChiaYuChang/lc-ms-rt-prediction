@@ -15,7 +15,8 @@ from ART.model.KensertGCN.model import KensertGCN
 from ART.ParSet import LayerParSet, LinearLayerParSet, MultiLayerParSet
 from ART.ParSet import GCNLayerParSet
 from ART.DataTransformer.DataTransformer import DataTransformer
-from ART.DataTransformer.Transforms import gen_mw_mask, gen_normalized_adj_matrix
+from ART.DataTransformer.Transforms import gen_normalized_adj_matrix
+from ART.DataTransformer.Transforms import gen_mw_mask, gen_mw_ppm
 # from ART.DataTransformer.Transforms import gen_knn_graph, gen_knn_distance
 # from ART.DataTransformer.Transforms import gen_radius_graph, gen_radius_distance
 from ART.SnapshotSaver import MongoDB
@@ -93,7 +94,7 @@ if __name__ == '__main__':
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
     # %%
-    ax_exp_name = "202201180018"
+    ax_exp_name = "202201200134"
     ax_snapshot_id, ax_snapshot = snapshot_db.read_snapshot({"name": ax_exp_name})
     snapshot_db.id = ax_snapshot_id
     ax_client = AxClient()
@@ -190,7 +191,7 @@ if __name__ == '__main__':
         n_p_l = 3
         p_h_c = parameters["predictor_hidden_channels"]
         # p_d_o  = parameters["predictor_dropout"]
-        p_d_o = 0.1
+        p_d_o = 0.0
         predictor_parset = MultiLayerParSet(
             in_channels=e_o_c,
             hidden_channels=[p_h_c] * (n_p_l-1),
