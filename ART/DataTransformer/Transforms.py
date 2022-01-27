@@ -2,9 +2,11 @@ import torch
 import numpy as np
 
 from typing import Any, Dict, Callable, Optional
+from scipy.stats import norm
 from ART.Data import GraphData as Data
 from ART.funcs import calc_knn_graph, calc_radius_graph, calc_dist_bw_node, calc_tilde_A
 from ART.funcs import hop
+
 class Transform():
 
     def __init__(self, name:str, func: Callable[[Data], Any], args: Dict = {}):
@@ -80,14 +82,34 @@ gen_normalized_adj_matrix = Transform(
     args={"self_loop": True, "which": "edge_index", "to_coo": True}
 )
 
-def calc_mw_ppm(data, mw_list, scaler: Optional[float] = 1e6):
-    return torch.abs(mw_list - data.sup["mw"])/ mw_list * scaler
+def calc_mw_ppm(data, mw_list, scaler: Optional[float] = 1e6, use_torch: bool = True):
+    if use_torch:
+        return torch.abs(mw_list - data.sup["mw"])/ mw_list * scaler
+    else:
+        if isinstance(mw_list, torch.Tensor):
+            mw_list = mw_list.numpy()
+        return np.abs(mw_list - data.sup["mw"])/ mw_list * scaler
+
+# def calc_mw_mask(
+#         data, thr: Optional[float] = 20.0,
+#         mask_dtype: Optional[torch.dtype] = torch.float32,
+#         ppm_attr_name: Optional[str] = "mw_ppm"):
+#     return (data[ppm_attr_name] <= thr).type(mask_dtype)
 
 def calc_mw_mask(
         data, thr: Optional[float] = 20.0,
         mask_dtype: Optional[torch.dtype] = torch.float32,
-        ppm_attr_name: Optional[str] = "mw_ppm"):
-    return (data[ppm_attr_name] <= thr).type(mask_dtype)
+        ppm_attr_name: Optional[str] = "mw_ppm",
+        use_torch: bool = True):
+    ppm = data[ppm_attr_name]
+    if isinstance(ppm, torch.Tensor):
+        ppm = ppm.numpy()
+    mask = norm.pdf(ppm, loc=0, scale=thr)
+    mask = mask/np.max(mask)
+    if use_torch:
+        return torch.tensor(mask, dtype=mask_dtype)
+    else:
+        return mask
 
 gen_mw_ppm = Transform(
     name="mw_ppm",
@@ -98,7 +120,7 @@ gen_mw_ppm = Transform(
 gen_mw_mask = Transform(
     name="mw_mask",
     func=calc_mw_mask,
-    args={"thr": 20, "mask_dtype": torch.float32, "ppm_attr_name": "mw_ppm"}
+    args={"thr": 20, "mask_dtype": torch.float32, "ppm_attr_name": "mw_ppm", "use_torch": True}
 )
 
 def n_hop(data, n: int = 1, rm_self_loop: bool = True):

@@ -1,3 +1,4 @@
+from turtle import forward
 import torch
 
 from .GraphConvLayer import GraphConvLayer
@@ -84,7 +85,7 @@ class KensertGCN(nn.Module):
                 name="fc_{}".format(i),
                 module=fc_lyr
             )
-        
+
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -115,3 +116,37 @@ class KensertGCN(nn.Module):
         fingerprint = self.pooling(h1, data.batch)
         predicted_y = self.predictor(fingerprint)
         return predicted_y
+
+
+class KensertGCNClassifier(nn.Module):
+
+    def __init__(
+            self,
+            num_class: int,
+            gcn_lyr_pars: Union[LayerParSetType, MultiLayerParSet],
+            prdctr_lyr_pars: Union[LayerParSetType, MultiLayerParSet],
+            which_tilde_A: Optional[str] = "normalized_adj_matrix",
+            which_node_attr: Optional[str] = "node_attr",
+            ) -> None:
+        
+        super().__init__()
+
+        self._kensert_gcn = KensertGCN(
+            gcn_lyr_pars=gcn_lyr_pars,
+            prdctr_lyr_pars=prdctr_lyr_pars,
+            which_tilde_A=which_tilde_A,
+            which_node_attr=which_node_attr,
+        )
+        self._num_class = num_class
+        self._softmax = nn.Softmax(dim=1)
+
+    def one_hot(self, x):
+        torch.nn.functional.one_hot(x, num_classes=self._num_class)
+
+    def reset_parameters(self):
+        self._kensert_gcn.reset_parameters()
+
+    def forward(self, data):
+        predicted_y = self._kensert_gcn(data)
+        predicted_class_y = self._softmax(torch.mul(predicted_y, data.mw_mask))
+        return predicted_class_y

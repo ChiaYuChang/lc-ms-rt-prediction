@@ -1,3 +1,7 @@
 #!/usr/bin/env nextflow
 
-process 
+param.gpu = True
+
+process setup_conda_env {
+    
+}

@@ -147,4 +147,6 @@ class MongoDB():
         if doc is None:
             return (None, None)
         else:
+            self._snapshot_id = doc["_id"]
+            print(f"Use ax snapshot: {self._snapshot_id}")
             return (doc["_id"], doc_to_json_snapshot(doc))

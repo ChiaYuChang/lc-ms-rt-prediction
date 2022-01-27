@@ -113,7 +113,6 @@ if __name__ == '__main__':
             smrt_mw = pickle.load(f)
 
         gen_mw_ppm.args["mw_list"] =  smrt_mw 
-
         pre_transform = DataTransformer(
             transform_list=[
                 gen_normalized_adj_matrix,

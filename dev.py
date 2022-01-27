@@ -10,8 +10,8 @@ from ART.Featurizer.FeatureSet import DefaultFeatureSet
 from ART.Featurizer.Featurizer import Featurizer, ParallelFeaturizer
 from ART.FileReaders import ParallelMolReader
 from ART.FileReaders import SMRTSdfReader
-from ART.ModelEvaluator import ModelEvaluator
-from ART.model.KensertGCN.model import KensertGCN
+from ART.ModelEvaluator import ModelEvaluator, RegressionModelEvaluator, ClassificationModelEvaluator
+from ART.model.KensertGCN.model import KensertGCN, KensertGCNClassifier
 from ART.ParSet import LayerParSet, LinearLayerParSet, MultiLayerParSet
 from ART.ParSet import GCNLayerParSet
 from ART.DataTransformer.DataTransformer import DataTransformer
@@ -24,13 +24,14 @@ from ART.funcs import check_has_processed, data_to_doc, doc_to_data
 from ax.service.ax_client import AxClient
 from ax.service.utils.instantiation import ObjectiveProperties
 from copy import deepcopy
+from datetime import datetime
 from multiprocessing import cpu_count
 from pathos.multiprocessing import ProcessingPool
+from pymongo import MongoClient
 from rdkit import RDLogger
 from torch import nn
 from torch.optim import Adam
 from torch_geometric.loader import DataLoader
-
 
 # %%
 if __name__ == '__main__':
@@ -52,21 +53,22 @@ if __name__ == '__main__':
     # gen_t_A_radius = deepcopy(gen_normalized_adj_matrix)
     # gen_t_A_radius.args["which"] = "radius_edge_index"
     # gen_t_A_radius.name = "radius_t_A"
-
+    gen_mw_mask.args["thr"] = 40
     # %%
-    # transform = DataTransformer(
-    #     transform_list=[
-    #         gen_knn_graph,
-    #         gen_knn_distance,
-    #         gen_t_A_knn,
-    #         gen_radius_graph,
-    #         gen_radius_distance,
-    #         gen_t_A_radius
-    #     ],
-    #     inplace=True,
-    #     rm_sup_info=True
-    # )
-    transform = None
+    transform = DataTransformer(
+        transform_list=[
+            gen_mw_mask
+            # gen_knn_graph,
+            # gen_knn_distance,
+            # gen_t_A_knn,
+            # gen_radius_graph,
+            # gen_radius_distance,
+            # gen_t_A_radius
+        ],
+        inplace=True,
+        rm_sup_info=True
+    )
+    # transform = None
 
     # %%
     smrt_tarin = SMRT(
@@ -90,12 +92,14 @@ if __name__ == '__main__':
     # %%
     num_edge_attr = smrt_tarin[0].edge_attr.shape[1]
     num_node_attr = smrt_tarin[0].node_attr.shape[1]
+    num_class = smrt_tarin[0].mw_mask.shape[0]
+    
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
     # %%
-    ax_exp_name = "Classification_Test"
+    ax_exp_name = "Classification_Test_1"
     ax_snapshot_id, ax_snapshot = snapshot_db.read_snapshot({"name": ax_exp_name})
-    snapshot_db.id = ax_snapshot_id
+    snapshot_db.snapshot_id = ax_snapshot_id
     ax_client = AxClient()
     
     # %%
@@ -103,6 +107,13 @@ if __name__ == '__main__':
         ax_client.create_experiment(
             name=ax_exp_name,
             parameters=[
+                {
+                    "name": "batch_size",
+                    "type": "choice",
+                    "values": [32, 64, 128],
+                    "value_type": "int",
+                    "is_ordered": True
+                },
                 {
                     "name": "learning_rate",
                     "type": "range",
@@ -152,13 +163,14 @@ if __name__ == '__main__':
     # %%
     num_trail = 50
 
+    # %%
     for _ in range(num_trail):
         # %%
         parameters, trial_index = ax_client.get_next_trial()
         print(f"\n{ax_exp_name} Trail ({trial_index+1:02d}/{num_trail:02d})")
 
-        # b_s = parameters["batch_size"]
-        b_s = 32
+        b_s = parameters["batch_size"]
+        # b_s = 64
         smrt_tarin_loader = DataLoader(
             dataset=smrt_tarin,
             batch_size=b_s,
@@ -194,6 +206,7 @@ if __name__ == '__main__':
         predictor_parset = MultiLayerParSet(
             in_channels=e_o_c,
             hidden_channels=[p_h_c] * (n_p_l-1),
+            # out_channels=num_class,
             out_channels=1,
             dropout=(p_d_o, False),
             relu=[True] * (n_p_l-1) + [False],
@@ -202,12 +215,22 @@ if __name__ == '__main__':
             output_obj=LinearLayerParSet
         )
     
-
-        model = KensertGCN(
+        which_tilde_A="normalized_adj_matrix"
+        model = KensertGCNClassifier(
+            num_class=num_class,
             gcn_lyr_pars=graph_embedder_parset,
             prdctr_lyr_pars=predictor_parset,
-            which_tilde_A="normalized_adj_matrix"
+            which_tilde_A=which_tilde_A
         )
+        # model = KensertGCN(
+        #     gcn_lyr_pars=graph_embedder_parset,
+        #     prdctr_lyr_pars=predictor_parset,
+        #     which_tilde_A=which_tilde_A
+        # )
+
+        # %%
+        btch = next(iter(smrt_tarin_loader))
+
         # %%
         optimizer = Adam(
             params=model.parameters(),
@@ -215,28 +238,62 @@ if __name__ == '__main__':
             weight_decay=10**(-parameters["weight_decay"]))
         
         # loss = nn.MSELoss()
-        loss = nn.HuberLoss(reduction='mean', delta=1.0)
+        # loss = nn.HuberLoss(reduction='mean', delta=1.0)
+        loss = nn.CrossEntropyLoss(reduction='mean')
 
-        evaluator = ModelEvaluator(
+        # %%
+        evaluator = ClassificationModelEvaluator(
             model=model,
             optimizer=optimizer,
             loss=loss,
             train_loader=smrt_tarin_loader,
             valid_loader=smrt_valid_loader,
+            acc_k_top=3,
             device=device,
             max_epoch=300
         )
         
+        # evaluator = RegressionModelEvaluator(
+        #     model=model,
+        #     optimizer=optimizer,
+        #     loss=loss,
+        #     train_loader=smrt_tarin_loader,
+        #     valid_loader=smrt_valid_loader,
+        #     device=device,
+        #     max_epoch=3
+        # )
+
+
+        # %%
         ax_trail_result = evaluator.run(trial_index=trial_index)
         
-
+        # %%
         ax_client.complete_trial(
             trial_index=trial_index,
             raw_data=ax_trail_result
         )
-
+        
+        # %%
+        best_trail_idx, _ , (best_trail_mu, _) = ax_client.get_best_trial()
+        evaluator.model.to("cpu")
+        best_valid_loss = best_trail_mu['valid_loss']
+        trial_valid_loss = ax_trail_result['valid_loss'][0]
+        if trial_valid_loss <= best_valid_loss:
+            model_state_dict = evaluator.model.state_dict()
+            with MongoClient(snapshot_db.uri) as client:
+                mng_col = client["ax"]["model_par"]
+                model_pars = {
+                    "time": datetime.utcnow(),
+                    "ax_exp_name" : "Classification_Test",
+                    "ax_snapshot_id": snapshot_db.snapshot_id,
+                    "model_state": pickle.dumps(model_state_dict)
+                }
+                mng_col.insert_one(model_pars)
+        
+        # %%
         snapshot_doc = ax_client.to_json_snapshot()
         snapshot_db.save_snapshot(snapshot_doc)
-        
 
+        print(f"Best trail: idx: {best_trail_idx}, RMSE: {best_trail_mu['rmse']:.3f} , MAE: {best_trail_mu['mae']:.3f}")
 
+# %%
