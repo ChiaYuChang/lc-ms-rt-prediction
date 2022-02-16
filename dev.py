@@ -96,7 +96,7 @@ if __name__ == '__main__':
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
-    ax_exp_name = "TTNet"
+    ax_exp_name = "TTNet01"
     try:
         ax_snapshot_id, ax_snapshot = snapshot_db.read_snapshot({"name": ax_exp_name})
     except ServerSelectionTimeoutError:

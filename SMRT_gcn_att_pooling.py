@@ -66,7 +66,7 @@ if __name__ == '__main__':
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
-    ax_exp_name = "TTNet"
+    ax_exp_name = "TTNet_i9"
     try:
         ax_snapshot_id, ax_snapshot = snapshot_db.read_snapshot({"name": ax_exp_name})
     except ServerSelectionTimeoutError:
@@ -89,7 +89,7 @@ if __name__ == '__main__':
                 {
                     "name": "learning_rate",
                     "type": "range",
-                    "bounds": [4.0, 5.60,
+                    "bounds": [4.5, 6.0],
                     "value_type": "float",
                     "log_scale": True
                 },
@@ -103,7 +103,7 @@ if __name__ == '__main__':
                 {
                     "name": "num_embedder_layer",
                     "type": "range",
-                    "bounds": [3, 4, 5, 6],
+                    "bounds": [3, 6],
                     "value_type": "int",
                     "log_scale": False,
                 },
