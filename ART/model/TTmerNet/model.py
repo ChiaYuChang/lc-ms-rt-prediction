@@ -140,7 +140,8 @@ class TTmerNet(nn.Module):
                 name="fc_{}".format(i),
                 module=fc_lyr
             )
-    
+        self.reset_parameters()
+
     def reset_parameters(self):
         def init_weights_(m):
             reset_parameters = getattr(m, "reset_parameters", None)

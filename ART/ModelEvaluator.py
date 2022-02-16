@@ -235,6 +235,9 @@ class ModelEvaluator():
             # Validate
             valid_loss_mu, valid_loss_std = self.validate()
 
+            if min_loss_mu > 1e8 and epoch > 10:
+                break
+
             # Early stop
             if min_loss_mu >= valid_loss_mu:
                 min_loss_mu = valid_loss_mu
