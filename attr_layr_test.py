@@ -8,7 +8,7 @@ from ART.DataSet import SMRT
 # from ART.DataTransformer.Transforms import gen_knn_graph, gen_knn_distance
 # from ART.DataTransformer.Transforms import gen_radius_graph, gen_radius_distance
 from ART.ModelEvaluator import ModelEvaluator
-from ART.model.ART.model import ARTAttrEncoderGCN
+from ART.model.AttrsEncoder.model import ARTAttrEncoderGCN
 from ART.ParSet import AttrsEncoderPar, MultiLayerParSet, LinearLayerParSet
 from ART.ParSet import LinearLayerParSet, MultiLayerParSet
 from ART.ParSet import GCNLayerParSet

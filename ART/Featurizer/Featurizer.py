@@ -216,99 +216,133 @@ class Featurizer():
         else:
             raise TypeError
 
-    def featurize(self, mol_record: MolRecord) -> Data:
-        mol = mol_record.mol
+    def featurize(self, mol_record: MolRecord) -> Union[Data, None]:
+        if len(mol_record.mol) == 0:
+            return None
+        data_list = [None] * len(mol_record.mol)
+        for i, mol in enumerate(mol_record.mol):
+            
+            num_atom = mol_num_atom.func(mol)
+            features_dict = {mol_num_atom.name: num_atom}
 
-        features_dict = {}
-        if self.include_coordinates:
-            features_dict["pos"] = self.gen_3d_coordinates(mol=mol)
+            if self.include_coordinates:
+                features_dict["pos"] = self.gen_3d_coordinates(mol=mol)
 
-        mol_features = self.gen_mol_features(mol=mol)
-        
-        if "mw" in mol_features.keys():
-            mol_record.supplementary["mw"] = mol_features["mw"][0]
-        mol_record.supplementary["rt"] = float(mol_record.rt)
+            mol_features = self.gen_mol_features(mol=mol)
+            
+            if "mw" in mol_features.keys():
+                mol_record.supplementary["mw"] = mol_features["mw"][0]
+            mol_record.supplementary["rt"] = float(mol_record.rt)
 
-        if self._use_np:
-            features_dict["graph_attr"] = np.concatenate(
-                [mol_features[item.name] for item in self.mol_feature_list])
-            # features_dict["graph_attr"] =  [mol_features[item.name] for item in self.mol_feature_list]
-        else:
-            features_dict["graph_attr"] = torch.cat(
-                [mol_features[item.name] for item in self.mol_feature_list])
-
-       
-        features_dict["sup"] = {**mol_record.supplementary, **self.gen_sup_features(mol=mol)}
-
-        atom_features = [None] * mol.GetNumAtoms()
-        for idx, atom in enumerate(mol.GetAtoms()):
-            atom_features[idx] = self.gen_atom_features(atom=atom)
-        # Encode Atom Feature
-        atom_features = pd.DataFrame.from_records(atom_features)
-        atom_features = atom_features[[item.name for item in self.atom_feature_list]]
-        atom_features = atom_features.to_records(index=False)
-        
-        if self._use_np:
-            atom_features = np.stack(
-                [np.concatenate(tuple(r)) for r in atom_features]
-            )
-            # atom_features = [r for r in atom_features]
-        else:
-            atom_features = torch.stack(
-                tuple(torch.cat(tuple(r)) for r in atom_features)
-            )
-        features_dict["node_attr"] = atom_features
-
-        bond_features = [None] * mol.GetNumBonds()
-        for idx, bond in enumerate(mol.GetBonds()):
-            bond_features[idx] = self.gen_bond_features(bond=bond)
-        # Encode Bond Feature
-        bond_features = pd.DataFrame.from_records(bond_features)
-        bond_features = bond_features[[item.name for item in self.bond_feature_list]]
-        bond_features = bond_features.to_records(index=False)
-        
-        if self._use_np:
-            bond_features = np.stack(
-                [np.concatenate(tuple(r)) for r in bond_features]
-            )
-            # bond_features = [r for r in bond_features]
-        else:
-            bond_features = torch.stack(
-                tuple(torch.cat(tuple(r)) for r in bond_features)
-            )
-
-        if self.undirected:
             if self._use_np:
-                bond_features = np.concatenate([bond_features, bond_features])
+                features_dict["graph_attr"] = np.concatenate(
+                    [mol_features[item.name] for item in self.mol_feature_list])
+                # features_dict["graph_attr"] =  [mol_features[item.name] for item in self.mol_feature_list]
             else:
-                bond_features = torch.cat([bond_features, bond_features])
+                features_dict["graph_attr"] = torch.cat(
+                    [mol_features[item.name] for item in self.mol_feature_list])
 
-        features_dict["edge_attr"] = bond_features
-        features_dict["edge_index"] = self.gen_edge_index(
-            mol=mol, undirected=self.undirected)
+            atom_features = [None] * mol.GetNumAtoms()
+            for idx, atom in enumerate(mol.GetAtoms()):
+                atom_features[idx] = self.gen_atom_features(atom=atom)
+            # Encode Atom Feature
+            atom_features = pd.DataFrame.from_records(atom_features)
+            atom_features = atom_features[[item.name for item in self.atom_feature_list]]
+            atom_features = atom_features.to_records(index=False)
+            
+            if self._use_np:
+                atom_features = np.stack(
+                    [np.concatenate(tuple(r)) for r in atom_features]
+                )
+                # atom_features = [r for r in atom_features]
+            else:
+                atom_features = torch.stack(
+                    tuple(torch.cat(tuple(r)) for r in atom_features)
+                )
+            features_dict["node_attr"] = atom_features
 
-        if not(features_dict["edge_attr"].shape[0] == features_dict["edge_index"].shape[1]):
-            raise RuntimeError
+            bond_features = [None] * mol.GetNumBonds()
+            for idx, bond in enumerate(mol.GetBonds()):
+                bond_features[idx] = self.gen_bond_features(bond=bond)
+            # Encode Bond Feature
+            bond_features = pd.DataFrame.from_records(bond_features)
+            bond_features = bond_features[[item.name for item in self.bond_feature_list]]
+            bond_features = bond_features.to_records(index=False)
+            
+            if self._use_np:
+                bond_features = np.stack(
+                    [np.concatenate(tuple(r)) for r in bond_features]
+                )
+                # bond_features = [r for r in bond_features]
+            else:
+                bond_features = torch.stack(
+                    tuple(torch.cat(tuple(r)) for r in bond_features)
+                )
 
-        data = Data.from_dict(features_dict)
+            if self.undirected:
+                if self._use_np:
+                    bond_features = np.concatenate([bond_features, bond_features])
+                else:
+                    bond_features = torch.cat([bond_features, bond_features])
 
-        if self._knn > 0:
-            data["knn_edge_index"] = self.gen_knn_edge_index(data=data)
-            data["knn_edge_attr"] = self.gen_dist_bw_node(
-                data=data, type_edge_index="knn_edge_index")
+            features_dict["edge_attr"] = bond_features
+            features_dict["edge_index"] = self.gen_edge_index(
+                mol=mol, undirected=self.undirected) + i*num_atom
+            # features_dict["edge_index"] = self.gen_edge_index(mol=mol, undirected=self.undirected)
+            if not(features_dict["edge_attr"].shape[0] == features_dict["edge_index"].shape[1]):
+                raise RuntimeError
 
-        if self._radius > 0:
-            data["radius_edge_index"] = self.gen_radius_edge_index(data=data)
-            data["radius_edge_attr"] = self.gen_dist_bw_node(
-                data=data, type_edge_index="radius_edge_index")
+            data = Data.from_dict(features_dict)
+
+            if self._knn > 0:
+                # data["knn_edge_index"] = self.gen_knn_edge_index(data=data)
+                data["knn_edge_index"] = self.gen_knn_edge_index(data=data) + i*num_atom
+                data["knn_edge_attr"] = self.gen_dist_bw_node(
+                    data=data, type_edge_index="knn_edge_index")
+
+            if self._radius > 0:
+                # data["radius_edge_index"] = self.gen_radius_edge_index(data=data)
+                data["radius_edge_index"] = self.gen_radius_edge_index(data=data) + i*num_atom
+                data["radius_edge_attr"] = self.gen_dist_bw_node(
+                    data=data, type_edge_index="radius_edge_index")
+
+            # if self._use_np:
+            #     data["y"] = np.array([mol_record.rt], dtype=np.float32)
+            # else:
+            #     data["y"] = torch.tensor([mol_record.rt], dtype=torch.float32)
+            data_list[i] = data
+
+        if len(data_list) > 1:
+            data = Data()
+            for key in data_list[0].keys:
+                values = [graph[key] for graph in data_list]
+                if key == "num_nodes":
+                    # data[key] = np.array([sum(values)])
+                    data[key] = sum(values)
+                else:
+                    if key == "graph_attr":
+                        data[key] = np.vstack(values)
+                    else:
+                        c_dim = data_list[0].__cat_dim__(key, data_list[0][key])
+                        data[key] = np.concatenate(values, axis=c_dim)
+        else:
+            data = data_list[0]
+            # data["num_nodes"] = np.array([data["num_nodes"]])
+            data["num_nodes"] = data["num_nodes"]
+            data["graph_attr"] = data["graph_attr"].reshape((1, -1))
 
         if self._use_np:
             data["y"] = np.array([mol_record.rt], dtype=np.float32)
         else:
-            data["y"] = torch.tensor([mol_record.rt], dtype=np.float32)
-
+            data["y"] = torch.tensor([mol_record.rt], dtype=torch.float32)
+        
+        num_tts = mol_record.supplementary["num_tts"]
+        data["num_tts"] = num_tts
+        data["tt_node_batch"] = np.repeat(np.array(range(num_tts)), num_atom)
+        data["tt_graph_batch"] = np.repeat(0, num_tts).astype(np.int64)
+        data["sup"] = {**mol_record.supplementary, **self.gen_sup_features(mol=mol_record.mol[0])}
         return data
-    
+        
     def __len__(self) -> int:
         return self._num_feature
 

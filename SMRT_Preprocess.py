@@ -11,16 +11,15 @@ from ART.Featurizer.Featurizer import Featurizer, ParallelFeaturizer
 from ART.FileReaders import ParallelMolReader
 from ART.FileReaders import SMRTSdfReader
 from ART.DataTransformer.DataTransformer import DataTransformer
-from ART.DataTransformer.Transforms import gen_mw_mask, gen_normalized_adj_matrix
-# from ART.DataTransformer.Transforms import gen_knn_graph, gen_knn_distance
-# from ART.DataTransformer.Transforms import gen_radius_graph, gen_radius_distance
+from ART.DataTransformer.Transforms import gen_normalized_adj_matrix
+from ART.DataTransformer.Transforms import gen_knn_graph, gen_knn_distance
+from ART.DataTransformer.Transforms import gen_radius_graph, gen_radius_distance
 from ART.funcs import check_has_processed, data_to_doc, doc_to_data
 from ART.DataTransformer.Transforms import gen_mw_mask, gen_mw_ppm
 
 from multiprocessing import cpu_count
 from pathos.multiprocessing import ProcessingPool
 from rdkit import RDLogger
-
 
 def pre_filter(data, thr: float = 300.0) -> bool:
     if data.y.dim() == 0:
@@ -48,7 +47,7 @@ if __name__ == '__main__':
             indent= "    "
         )):
         print(prefix + f"Calculating descriptors")
-        n_jobs = cpu_count() // 4 * 3
+        n_jobs = min(cpu_count() // 4 * 3, 50)
         print(prefix + f"Using {n_jobs} cores for preprocessing")
         
         sup_info = {
@@ -63,6 +62,7 @@ if __name__ == '__main__':
         print("(2/7) Setting up Reader and Featurizer")
         mol_reader = SMRTSdfReader(
             file_path="/".join((root, "raw", raw_file_names)),
+            max_tautomer=10,
             sup_info = sup_info
         )
 
@@ -113,15 +113,17 @@ if __name__ == '__main__':
             smrt_mw = pickle.load(f)
 
         gen_mw_ppm.args["mw_list"] =  smrt_mw 
+        gen_mw_mask.args["thr"] = 100
+        gen_mw_mask.args["shift"] = 1
         pre_transform = DataTransformer(
             transform_list=[
                 gen_normalized_adj_matrix,
                 gen_mw_ppm,
-                gen_mw_mask#,
-                # gen_knn_graph,
-                # gen_knn_distance
-                # gen_radius_graph,
-                # gen_radius_distance
+                gen_mw_mask,
+                gen_knn_graph,
+                gen_knn_distance,
+                gen_radius_graph,
+                gen_radius_distance
             ],
             inplace=True,
             rm_sup_info=True

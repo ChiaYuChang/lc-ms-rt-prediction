@@ -56,8 +56,13 @@ if __name__ == '__main__':
     # gen_mw_mask.args["thr"] = 100
     # %%
     # transform = DataTransformer(
+<<<<<<< HEAD
         # transform_list=[
             # gen_mw_mask
+=======
+    #     transform_list=[
+    #         gen_mw_mask
+>>>>>>> 495ea04a8891f0f1433786dd5571886b115fc8c6
             # gen_knn_graph,
             # gen_knn_distance,
             # gen_t_A_knn,
@@ -229,7 +234,7 @@ if __name__ == '__main__':
         # )
 
         # %%
-        btch = next(iter(smrt_tarin_loader))
+        # btch = next(iter(smrt_tarin_loader))
 
         # %%
         optimizer = Adam(
@@ -248,9 +253,9 @@ if __name__ == '__main__':
             loss=loss,
             train_loader=smrt_tarin_loader,
             valid_loader=smrt_valid_loader,
-            acc_k_top=3,
+            acc_k_top=5,
             device=device,
-            max_epoch=10
+            max_epoch=300
         )
         
         # evaluator = RegressionModelEvaluator(

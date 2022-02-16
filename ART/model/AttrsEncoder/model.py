@@ -1,7 +1,7 @@
 import imp
 import torch
 
-from ART.model.ART.AttrsEncoderLayers import AttrsEncoderLayers
+from ART.model.AttrsEncoder.AttrsEncoderLayers import AttrsEncoderLayers
 from ART.model.KensertGCN.GraphConvLayer import GraphConvLayer
 from ART.ParSet import LayerParSet, MultiLayerParSet, LayerParSetType, AttrsEncoderPar
 

@@ -20,6 +20,7 @@ from ART.DataTransformer.Transforms import gen_mw_mask, gen_normalized_adj_matri
 # from ART.DataTransformer.Transforms import gen_radius_graph, gen_radius_distance
 from ART.SnapshotSaver import MongoDB
 from ART.funcs import check_has_processed, data_to_doc, doc_to_data
+from ART.model.TTmerNet.model import TTmerNet
 
 from ax.service.ax_client import AxClient
 from ax.service.utils.instantiation import ObjectiveProperties
@@ -28,6 +29,7 @@ from datetime import datetime
 from multiprocessing import cpu_count
 from pathos.multiprocessing import ProcessingPool
 from pymongo import MongoClient
+from pymongo.errors import ServerSelectionTimeoutError
 from rdkit import RDLogger
 from torch import nn
 from torch.optim import Adam
@@ -41,11 +43,9 @@ if __name__ == '__main__':
     )
     snapshot_db.db = {"db": "ax", "col": "snapshot"}
     
-    # %%
     root = "./Data/SMRT"
     raw_file_names = "SMRT_dataset.sdf"
 
-    # %%
     # gen_t_A_knn = deepcopy(gen_normalized_adj_matrix)
     # gen_t_A_knn.args["which"] = "knn_edge_index"
     # gen_t_A_knn.name = "knn_t_A"
@@ -53,24 +53,23 @@ if __name__ == '__main__':
     # gen_t_A_radius = deepcopy(gen_normalized_adj_matrix)
     # gen_t_A_radius.args["which"] = "radius_edge_index"
     # gen_t_A_radius.name = "radius_t_A"
-    gen_mw_mask.args["thr"] = 40
-    # %%
-    transform = DataTransformer(
-        transform_list=[
-            gen_mw_mask
+    # gen_mw_mask.args["thr"] = 40
+
+    transform = None
+    # transform = DataTransformer(
+    #     transform_list=[
+    #         gen_mw_mask
             # gen_knn_graph,
             # gen_knn_distance,
             # gen_t_A_knn,
             # gen_radius_graph,
             # gen_radius_distance,
             # gen_t_A_radius
-        ],
-        inplace=True,
-        rm_sup_info=True
-    )
-    # transform = None
+    #     ],
+    #     inplace=True,
+    #     rm_sup_info=True
+    # )
 
-    # %%
     smrt_tarin = SMRT(
         root=root, 
         split="train",
@@ -96,14 +95,18 @@ if __name__ == '__main__':
     
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-    # %%
-    ax_exp_name = "Classification_Test_1"
-    ax_snapshot_id, ax_snapshot = snapshot_db.read_snapshot({"name": ax_exp_name})
+
+    ax_exp_name = "TTNet"
+    try:
+        ax_snapshot_id, ax_snapshot = snapshot_db.read_snapshot({"name": ax_exp_name})
+    except ServerSelectionTimeoutError:
+        ax_snapshot_id, ax_snapshot = (None, None)
     snapshot_db.snapshot_id = ax_snapshot_id
     ax_client = AxClient()
     
     # %%
     if ax_snapshot is None:
+        print("Start a new experiment.")
         ax_client.create_experiment(
             name=ax_exp_name,
             parameters=[
@@ -158,6 +161,7 @@ if __name__ == '__main__':
             ],
         )
     else:
+        print("Read snapshot.")
         ax_client = ax_client.from_json_snapshot(ax_snapshot)
     
     # %%
@@ -216,20 +220,26 @@ if __name__ == '__main__':
         )
     
         which_tilde_A="normalized_adj_matrix"
-        model = KensertGCNClassifier(
-            num_class=num_class,
-            gcn_lyr_pars=graph_embedder_parset,
-            prdctr_lyr_pars=predictor_parset,
-            which_tilde_A=which_tilde_A
-        )
+        # model = KensertGCNClassifier(
+        #     num_class=num_class,
+        #     gcn_lyr_pars=graph_embedder_parset,
+        #     prdctr_lyr_pars=predictor_parset,
+        #     which_tilde_A=which_tilde_A
+        # )
         # model = KensertGCN(
         #     gcn_lyr_pars=graph_embedder_parset,
         #     prdctr_lyr_pars=predictor_parset,
         #     which_tilde_A=which_tilde_A
         # )
+        
+        model = TTmerNet(
+            gcn_lyr_pars=graph_embedder_parset,
+            prdctr_lyr_pars=predictor_parset,
+            which_tilde_A=which_tilde_A
+        )
 
         # %%
-        btch = next(iter(smrt_tarin_loader))
+        # btch = next(iter(smrt_tarin_loader))
 
         # %%
         optimizer = Adam(
@@ -238,30 +248,30 @@ if __name__ == '__main__':
             weight_decay=10**(-parameters["weight_decay"]))
         
         # loss = nn.MSELoss()
-        # loss = nn.HuberLoss(reduction='mean', delta=1.0)
-        loss = nn.CrossEntropyLoss(reduction='mean')
+        loss = nn.HuberLoss(reduction='mean', delta=1.0)
+        # loss = nn.CrossEntropyLoss(reduction='mean')
 
         # %%
-        evaluator = ClassificationModelEvaluator(
-            model=model,
-            optimizer=optimizer,
-            loss=loss,
-            train_loader=smrt_tarin_loader,
-            valid_loader=smrt_valid_loader,
-            acc_k_top=3,
-            device=device,
-            max_epoch=300
-        )
-        
-        # evaluator = RegressionModelEvaluator(
+        # evaluator = ClassificationModelEvaluator(
         #     model=model,
         #     optimizer=optimizer,
         #     loss=loss,
         #     train_loader=smrt_tarin_loader,
         #     valid_loader=smrt_valid_loader,
+        #     acc_k_top=3,
         #     device=device,
-        #     max_epoch=3
+        #     max_epoch=300
         # )
+        
+        evaluator = RegressionModelEvaluator(
+            model=model,
+            optimizer=optimizer,
+            loss=loss,
+            train_loader=smrt_tarin_loader,
+            valid_loader=smrt_valid_loader,
+            device=device,
+            max_epoch=30
+        )
 
 
         # %%

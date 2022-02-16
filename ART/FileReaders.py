@@ -3,24 +3,39 @@ import itertools
 
 from ART.funcs import split_list
 from copy import deepcopy
-from typing import Dict, List, Tuple, Union, Iterable, NamedTuple, Dict
+from typing import Dict, List, Optional, Tuple, Union, Iterable, NamedTuple, Dict
 from rdkit import Chem
 from rdkit.Chem.rdchem import Mol
 from rdkit.Chem import AllChem
-
+from itertools import chain
+from itertools import repeat
+from rdkit.Chem.MolStandardize.rdMolStandardize import TautomerEnumerator
 
 class MolRecord(NamedTuple):
-    mol: Union[Mol, None]
+    mol: List[Mol]
     rt: float
     supplementary: Union[Dict, None]
 
 
 class MolReader():
     def __init__(
-            self, file_path, data: Union[List[MolRecord], None] = None,
-            limit: Union[int, None]=None) -> None:
+            self, file_path,
+            data: Union[List[MolRecord], None] = None,
+            max_tautomer: Optional[int] = None,
+            limit: Optional[int]=None) -> None:
+        
         self._file_path = file_path
-        self._raw_data = self.truncate(x=self.read_file(), limit=limit)
+
+        self._raw_data = self.truncate(x=self.read_file(limit=limit), limit=limit)
+        self._max_tautomer = max_tautomer
+
+        # if max_tautomer is not None:
+        #     tautomer_enumerator = TautomerEnumerator()
+        #     tautomer_enumerator.SetMaxTautomers(max_tautomer)
+        #     tautomer_enumerator.SetReassignStereo(False)
+        #     self._tautomer_enumerator = tautomer_enumerator
+        # else:
+        #     self._tautomer_enumerator = None
         self._length = len(self._raw_data)
 
         if data is None:
@@ -53,11 +68,11 @@ class MolReader():
     @property
     def padding_obj(self):
         return MolRecord(
-                mol="",
+                mol=[],
                 rt=-1,
                 supplementary={})
 
-    def read_file(self) -> Iterable:
+    def read_file(self, limit: Optional[int] = None) -> Iterable:
         raise NotImplementedError
 
     def process(self, obj) -> MolRecord:
@@ -73,30 +88,63 @@ class MolReader():
     def next(self) -> MolRecord:
         return self.__next__()
 
+
     def __getitem__(self, index) -> Union[MolRecord, List[MolRecord]]:
+        if self._max_tautomer is not None:
+            def gen_tautomers(record: MolRecord, max_tautomer:int):
+                # if record.mol is not None and record.mol != "":
+                if len(record.mol) == 1:
+                    tautomer_enumerator = TautomerEnumerator()
+                    tautomer_enumerator.SetMaxTautomers(max_tautomer)
+                    tautomer_enumerator.SetReassignStereo(False)
+                    # record_tt = tautomer_enumerator.Enumerate(record.mol)
+                    record_tt = list(tautomer_enumerator.Enumerate(record.mol[0]))
+                    supplementary = deepcopy(record.supplementary)
+                    supplementary["num_tts"] = len(record_tt)
+                    return MolRecord(mol=record_tt, rt=record.rt, supplementary=supplementary)
+                    # return [MolRecord(mol=tt, rt=record.rt, supplementary=supplementary) for tt in record_tt]
+                else:
+                    record.supplementary["num_tts"] = 0
+                    return record
+
         if isinstance(index, slice):
             data = self._raw_data[index]
             cache = self._cache[index]
             out = [None] * len(data)
             for i, (d, c) in enumerate(zip(data, cache)):
                 if c is None:
-                    out[i] = self.process(d)
+                    if self._max_tautomer is None:
+                        out[i] = self.process(d)
+                    else:
+                        out[i] = gen_tautomers(
+                            record=self.process(d),
+                            max_tautomer=self._max_tautomer)
                 else:
                     out[i] = c
             self._cache[index] = out
             return out
         else:
             if self._cache[index] is None:
-                self._cache[index] = self.process(self._raw_data[index])
+                if self._max_tautomer is None:
+                    self._cache[index] = self.process(self._raw_data[index])
+                else:
+                    self._cache[index] = gen_tautomers(
+                        record=self.process(self._raw_data[index]),
+                        max_tautomer=self._max_tautomer)
             return self._cache[index]
 
     def __next__(self) -> MolRecord:
         if self._next_index < self.length:
             index = self._next_index
-            if self._cache[index] is None:
-                self._cache[index] = self.process(self._raw_data[index])
+            # if self._cache[index] is None:
+            #     if self._tautomer_enumerator is None:
+            #         self._cache[index] = [self.process(self._raw_data[index])]
+            #     else:
+            #         self._cache[index] = gen_tautomers(
+            #             self.process(self._raw_data[index]))
             self._next_index += 1
-            return self._cache[index]
+            # return self._cache[index]
+            return self.__getitem__(index=index)
         else:
             self._next_index = 0
             raise StopIteration
@@ -111,29 +159,38 @@ class SMRTSdfReader(MolReader):
             file_path: str, 
             data: Union[List[MolRecord], None] = None,
             sup_info: Dict = {}, 
+            max_tautomer: Optional[int] = None,
             limit: Union[int, None] = None) -> None:
         self._num_error = 0
         self._sup_info = sup_info
-        super().__init__(file_path=file_path, data=data, limit=limit)
+        super().__init__(file_path, data, max_tautomer, limit)
 
     @property
     def __name__(self) -> str:
         return "SMRTSdfReader"
 
-    def read_file(self) -> Iterable:
+    def read_file(self, limit: Optional[int] = None) -> Iterable:
         mols = Chem.SDMolSupplier(self.file_path, removeHs=False)
-        raw_data = [None] * len(mols)
+        if limit is not None:
+            raw_data = [None] * min(len(mols), limit)
+        else:
+            raw_data = [None] * len(mols)
+            limit = len(mols)
+        
         # RDLogger.DisableLog('rdApp.*')
         for i, mol in enumerate(mols):
-            if (mol):
-                raw_data[i] = {
-                    "mol_block": Chem.MolToMolBlock(mol),
-                    "mol_prop": {
-                        "rt": mol.GetProp("RETENTION_TIME"),
-                        "cid": mol.GetProp("PUBCHEM_COMPOUND_CID")}
-                }
+            if i < limit:
+                if (mol):
+                    raw_data[i] = {
+                        "mol_block": Chem.MolToMolBlock(mol),
+                        "mol_prop": {
+                            "rt": mol.GetProp("RETENTION_TIME"),
+                            "cid": mol.GetProp("PUBCHEM_COMPOUND_CID")}
+                    }
+                else:
+                    self._num_error += 1
             else:
-                self._num_error += 1
+                break                
         # RDLogger.EnableLog('rdApp.info')
         return raw_data
 
@@ -146,7 +203,7 @@ class SMRTSdfReader(MolReader):
                     sup_info = self._sup_info
                     sup_info["cid"] = obj["mol_prop"]["cid"]
                     record = MolRecord(
-                        mol=mol,
+                        mol=[mol],
                         rt=float(obj["mol_prop"]["rt"]),
                         supplementary=sup_info
                     )
@@ -171,14 +228,15 @@ class CsvReader(MolReader):
             data: Union[List[MolRecord], None] = None,
             notation_col: str = "inchi", rt_col: str = "rt",
             notation_method: str = "InChI",
+            max_tautomer: Optional[int] = None,
             limit: Union[int, None] = None
             ) -> None:
 
         self._notation_method = notation_method
         self._notation_col = notation_col
         self._rt_col = rt_col
-        super().__init__(file_path, data=data, limit=limit)
-
+        
+        super().__init__(file_path, data, max_tautomer, limit)
         if self._notation_method in ["SMILES", "smi", "smiles"]:
             self.molEncoder = Chem.MolFromSmiles
         elif self._notation_method  in ["InChI", "Inchi", "inchi"]:
@@ -194,8 +252,11 @@ class CsvReader(MolReader):
     def __name__(self) -> str:
         return "CsvReader"
 
-    def read_file(self) -> Iterable:
+    def read_file(self, limit: Optional[int] = None) -> Iterable:
         raw_data = pd.read_csv(self.file_path)
+        
+        if limit is not None:
+            raw_data = raw_data.iloc[0:min(raw_data.shape[0], limit), :]
         raw_data_main = raw_data.loc[:, [self._notation_col, self._rt_col]]
         raw_data_sup = raw_data.drop([self._notation_col, self._rt_col], axis=1)
         raw_data_sup = raw_data_sup.to_dict(orient="records")
@@ -212,7 +273,7 @@ class CsvReader(MolReader):
 
             if AllChem.EmbedMolecule(mol) == 0:
                 record = MolRecord(
-                    mol=mol,
+                    mol=[mol],
                     rt=rt,
                     supplementary=sup
                 )

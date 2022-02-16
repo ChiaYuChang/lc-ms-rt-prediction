@@ -99,13 +99,14 @@ def calc_mw_ppm(data, mw_list, scaler: Optional[float] = 1e6, use_torch: bool = 
 def calc_mw_mask(
         data, thr: Optional[float] = 20.0,
         mask_dtype: Optional[torch.dtype] = torch.float32,
+        shift: Optional[float] = 0,
         ppm_attr_name: Optional[str] = "mw_ppm",
         use_torch: bool = True):
     ppm = data[ppm_attr_name]
     if isinstance(ppm, torch.Tensor):
         ppm = ppm.numpy()
     mask = norm.pdf(ppm, loc=0, scale=thr)
-    mask = mask/np.max(mask)
+    mask = mask/np.max(mask) + shift
     if use_torch:
         return torch.tensor(mask, dtype=mask_dtype)
     else:
