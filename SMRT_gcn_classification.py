@@ -53,22 +53,22 @@ if __name__ == '__main__':
     # gen_t_A_radius = deepcopy(gen_normalized_adj_matrix)
     # gen_t_A_radius.args["which"] = "radius_edge_index"
     # gen_t_A_radius.name = "radius_t_A"
-    gen_mw_mask.args["thr"] = 100
+    # gen_mw_mask.args["thr"] = 100
     # %%
-    transform = DataTransformer(
-        transform_list=[
-            gen_mw_mask
+    # transform = DataTransformer(
+    #     transform_list=[
+    #         gen_mw_mask
             # gen_knn_graph,
             # gen_knn_distance,
             # gen_t_A_knn,
             # gen_radius_graph,
             # gen_radius_distance,
             # gen_t_A_radius
-        ],
-        inplace=True,
-        rm_sup_info=True
-    )
-    # transform = None
+    #     ],
+    #     inplace=True,
+    #     rm_sup_info=True
+    # )
+    transform = None
 
     # %%
     smrt_tarin = SMRT(
@@ -229,7 +229,7 @@ if __name__ == '__main__':
         # )
 
         # %%
-        btch = next(iter(smrt_tarin_loader))
+        # btch = next(iter(smrt_tarin_loader))
 
         # %%
         optimizer = Adam(
@@ -248,9 +248,9 @@ if __name__ == '__main__':
             loss=loss,
             train_loader=smrt_tarin_loader,
             valid_loader=smrt_valid_loader,
-            acc_k_top=3,
+            acc_k_top=5,
             device=device,
-            max_epoch=10
+            max_epoch=300
         )
         
         # evaluator = RegressionModelEvaluator(

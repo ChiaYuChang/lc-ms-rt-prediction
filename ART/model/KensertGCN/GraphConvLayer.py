@@ -47,9 +47,10 @@ class GraphConvLayer(nn.Module):
         glorot_(self.W_0)
         glorot_(self.W_1)
 
-    def forward(self, x):
+    # def forward(self, x):
+    def forward(self, A, h0):
         # \tilde{A} = D^{-1/2}AD^{-1/2}
-        A, h0 = x 
+        # A, h0 = x 
         h1 = torch.add(torch.mm(h0, self.W_0), torch.linalg.multi_dot([A, h0, self.W_1]))
         h1 = self.batch_norm(h1)
         h1 = self.activation(h1)
@@ -58,4 +59,5 @@ class GraphConvLayer(nn.Module):
         # if mask:
         #     H_mask = mask[1][:, :, None]
         #     H *= tf.cast(H_mask, H.dtype)
-        return (A, h1)
+        # return (A, h1)
+        return h1
