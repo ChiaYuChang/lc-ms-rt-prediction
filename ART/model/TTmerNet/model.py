@@ -56,21 +56,26 @@ class TTmerNet(nn.Module):
             gcn_lyr_pars[-1].in_channels,
             gcn_lyr_pars[-1].in_channels
         )        
-        
+        tt_btch_norm_0 = nn.BatchNorm1d(num_features=gcn_lyr_pars[-1].in_channels)
+        tt_btch_norm_1 = nn.BatchNorm1d(num_features=gcn_lyr_pars[-1].in_channels)
+        tt_btch_norm_2 = nn.BatchNorm1d(num_features=gcn_lyr_pars[-1].in_channels)
         self.tt_pooling = pyg_nn.Sequential(
-            input_args='h1, tt_edge_index, tt_node_batch',
+            input_args='node_embd, tt_edge_index, tt_node_batch',
             modules=[
-                (pyg_nn.global_add_pool, "h1, tt_node_batch -> tt_attr"),
-                (nn.ReLU(), "tt_attr -> tt_attr"),
-                (lambda x1, x2: (x1, x2), 'h1, tt_attr -> x_pair'),
-                (tt_attr_cov, 'x_pair, tt_edge_index -> tt_embd'),
-                (nn.ELU(), "tt_embd -> tt_embd"),
-                (nn.Dropout(p=0.01), "tt_embd -> tt_embd"),
-                (tt_gru, "tt_embd, tt_attr -> tt_attr"),
-                (nn.ReLU(), "tt_embd -> tt_embd")
+                (tt_btch_norm_0, "node_embd -> node_embd"),
+                (pyg_nn.global_add_pool, "node_embd, tt_node_batch -> tt_graph_mean"),
+                (nn.ReLU(), "tt_graph_mean -> tt_graph_mean"),
+                (tt_btch_norm_1, "tt_graph_mean -> tt_graph_mean"),
+                (lambda x1, x2: (x1, x2), 'node_embd, tt_graph_mean -> x_pair'),
+                (tt_attr_cov, 'x_pair, tt_edge_index -> tt_graph_embd'),
+                (nn.ELU(), "tt_graph_embd -> tt_graph_embd"),
+                (nn.Dropout(p=0.001), "tt_graph_embd -> tt_graph_embd"),
+                (tt_gru, "tt_graph_embd, tt_graph_mean -> tt_graph_embd"),
+                (nn.ReLU(), "tt_graph_embd -> tt_graph_embd"),
+                (tt_btch_norm_2, "tt_graph_embd -> tt_graph_embd"),
             ]
         )
-
+        
         mol_attr_cov = pyg_nn.GATConv(
             gcn_lyr_pars[-1].in_channels,
             gcn_lyr_pars[-1].in_channels,
@@ -78,23 +83,27 @@ class TTmerNet(nn.Module):
             add_self_loops=False,
             negative_slope=0.01
         )
-        
         mol_gru = GRUCell(
             gcn_lyr_pars[-1].in_channels,
             gcn_lyr_pars[-1].in_channels
         )
-
-        self.mol_pooling = pyg_nn.Sequential(
-            input_args='tt_embd, mol_edge_index, tt_graph_batch',
+        mol_btch_norm_0 = nn.BatchNorm1d(num_features=gcn_lyr_pars[-1].in_channels)
+        mol_btch_norm_1 = nn.BatchNorm1d(num_features=gcn_lyr_pars[-1].in_channels)
+        mol_btch_norm_2 = nn.BatchNorm1d(num_features=gcn_lyr_pars[-1].in_channels)
+        self.mol_pooling =pyg_nn.Sequential(
+            input_args='tt_graph_embd, mol_edge_index, tt_graph_batch',
             modules=[
-                (pyg_nn.global_add_pool, "tt_embd, tt_graph_batch -> mol_attr"),
-                (nn.ReLU(), "mol_attr -> mol_attr"),
-                (lambda x1, x2: (x1, x2), 'tt_embd, mol_attr -> x_pair'),
-                (mol_attr_cov, 'x_pair, mol_edge_index -> mol_embd'),
-                (nn.ELU(), "mol_embd -> mol_embd"),
-                (nn.Dropout(p=0.01), "mol_embd -> mol_embd"),
-                (mol_gru, "mol_embd, mol_attr -> mol_attr"),
-                (nn.ReLU(), "mol_embd -> mol_embd")
+                (mol_btch_norm_0, "tt_graph_embd -> tt_graph_embd"),
+                (pyg_nn.global_add_pool, "tt_graph_embd, tt_graph_batch -> mol_graph_mean"),
+                (nn.ReLU(), "mol_graph_mean -> mol_graph_mean"),
+                (mol_btch_norm_1, "mol_graph_mean -> mol_graph_mean"),
+                (lambda x1, x2: (x1, x2), 'tt_graph_embd, mol_graph_mean -> x_pair'),
+                (mol_attr_cov, 'x_pair, mol_edge_index -> mol_graph_embd'),
+                (nn.ELU(), "mol_graph_embd -> mol_graph_embd"),
+                (nn.Dropout(p=0.001), "mol_graph_embd -> mol_graph_embd"),
+                (mol_gru, "mol_graph_embd, mol_graph_mean -> mol_graph_embd"),
+                (nn.ReLU(), "mol_graph_embd -> mol_graph_embd"),
+                (mol_btch_norm_2, "mol_graph_embd -> mol_graph_embd")
             ]
         )
 
@@ -168,15 +177,15 @@ class TTmerNet(nn.Module):
             (data.num_nodes, data.num_nodes)
         )
 
-        h1 = self.graph_embedder(A=tilde_A, x=h0)
+        node_embd = self.graph_embedder(A=tilde_A, x=h0)
         tt_edge_index = torch.stack((
             torch.arange(
                 data.tt_node_batch.size(0),
                 device=data.tt_graph_batch.device
             ), data.tt_node_batch), dim=0)
         
-        tt_embd  = self.tt_pooling(
-            h1=h1,
+        tt_graph_embd = self.tt_pooling(
+            node_embd=node_embd,
             tt_edge_index=tt_edge_index,
             tt_node_batch=data.tt_node_batch)
         
@@ -186,10 +195,10 @@ class TTmerNet(nn.Module):
                 device=data.tt_graph_batch.device
             ), data.tt_graph_batch), dim=0)
         
-        mol_embd = self.mol_pooling(
-            tt_embd=tt_embd,
+        mol_graph_embd = self.mol_pooling(
+            tt_graph_embd=tt_graph_embd,
             mol_edge_index=mol_edge_index,
             tt_graph_batch=data.tt_graph_batch)
 
-        predicted_y = self.predictor(mol_embd)
+        predicted_y = self.predictor(mol_graph_embd)
         return predicted_y
