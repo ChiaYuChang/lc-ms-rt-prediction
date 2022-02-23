@@ -49,7 +49,7 @@ if __name__ == '__main__':
         print(prefix + f"Calculating descriptors")
         n_jobs = min(cpu_count() // 4 * 3, 50)
         print(prefix + f"Using {n_jobs} cores for preprocessing")
-        
+
         sup_info = {
             "system": "Agilent 1100/1200 series liquid chromatography (LC) system",
             "username": "Xavier Domingo",

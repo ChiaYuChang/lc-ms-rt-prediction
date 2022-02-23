@@ -17,6 +17,7 @@ from ART.DataTransformer.DataTransformer import DataTransformer
 from ART.DataTransformer.Transforms import gen_mw_mask, gen_normalized_adj_matrix
 from ART.SnapshotSaver import MongoDB
 from ART.funcs import check_has_processed, data_to_doc, doc_to_data
+from ART.DataTransformer.Transforms import Transform
 
 from ax.service.ax_client import AxClient
 from ax.service.utils.instantiation import ObjectiveProperties
@@ -66,7 +67,7 @@ if __name__ == '__main__':
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
-    ax_exp_name = "TTNet_i9"
+    ax_exp_name = "TTNet_BatchNorm"
     try:
         ax_snapshot_id, ax_snapshot = snapshot_db.read_snapshot({"name": ax_exp_name})
     except ServerSelectionTimeoutError:

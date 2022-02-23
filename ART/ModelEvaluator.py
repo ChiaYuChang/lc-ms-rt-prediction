@@ -304,7 +304,7 @@ class RegressionModelEvaluator(ModelEvaluator):
                     desc=" - S", ncols=self._tqdm_ncols)):
                 data = data.to(self.device)
                 
-                targets = data.y
+                targets = self.target_transform(data)
                 outputs = self.model(data)
                 
                 rmse[idx] = torch.sqrt(mse_loss(targets, outputs))
